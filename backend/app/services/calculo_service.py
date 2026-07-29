@@ -38,6 +38,7 @@ from app.models.parada import ParadaExtraordinaria
 from app.models.parcela import Parcela
 from app.models.processo import Processo
 from app.models.segmento import CorrecaoSegmento, JurosSegmento
+from app.services.salario_minimo import buscar_valor_vigente
 
 
 def criar_buscar_variacao(db: Session) -> BuscarVariacao:
@@ -211,14 +212,31 @@ def calcular_parcela_db(db: Session, parcela: Parcela, processo: Processo, hoje:
     )
 
 
-def _montar_acessorio_engine(acessorio: Acessorio) -> AcessorioEngine:
+def _montar_acessorio_engine(db: Session, acessorio: Acessorio) -> AcessorioEngine:
+    valor_fixo = acessorio.valor_fixo
+    if acessorio.salario_minimo_quantidade is not None:
+        # Multa "Salário Mínimo" — resolve o valor absoluto ANTES do
+        # motor (que nunca acessa banco): quantidade × valor vigente na
+        # competência de data_evento (mesmo cadastro em degrau do botão
+        # "Salário Mínimo" do passo 2, seção 3.9/4).
+        assert acessorio.data_evento is not None
+        valor_salario = buscar_valor_vigente(db, acessorio.data_evento.replace(day=1))
+        if valor_salario is None:
+            raise ValueError(
+                "Configuração inválida: multa 'Salário Mínimo' usa a competência "
+                f"{acessorio.data_evento:%m/%Y}, mas não há valor de salário mínimo cadastrado "
+                "até essa data — cadastre o valor vigente (passo 2, botão 'Salário Mínimo') antes de calcular."
+            )
+        valor_fixo = (acessorio.salario_minimo_quantidade * valor_salario).quantize(Decimal("0.01"))
     return AcessorioEngine(
         percentual=acessorio.percentual,
-        valor_fixo=acessorio.valor_fixo,
+        valor_fixo=valor_fixo,
         base_calculo=acessorio.base_calculo,
         data_evento=acessorio.data_evento,
         valor_diario=acessorio.valor_diario,
         data_inicio_acumulo=acessorio.data_inicio_acumulo,
+        diaria_por_competencia=acessorio.diaria_por_competencia,
+        valor_mensal=acessorio.valor_mensal,
     )
 
 
@@ -272,7 +290,7 @@ def calcular_processo(db: Session, processo: Processo, hoje: date) -> ResultadoP
                 Decimal(0),
             )
         resultados_acessorios[acessorio.id] = motor_acessorios.calcular_acessorio(
-            _montar_acessorio_engine(acessorio),
+            _montar_acessorio_engine(db, acessorio),
             total_liquido_parcelas,
             total_principal_sem_correcao,
             hoje,

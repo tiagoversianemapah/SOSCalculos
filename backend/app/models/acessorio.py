@@ -22,9 +22,11 @@ class Acessorio(UUIDPk, TimestampMixin, Base):
     __tablename__ = "acessorio"
     __table_args__ = (
         CheckConstraint(
-            "(percentual IS NOT NULL AND valor_fixo IS NULL AND valor_diario IS NULL) OR "
-            "(percentual IS NULL AND valor_fixo IS NOT NULL AND valor_diario IS NULL) OR "
-            "(percentual IS NULL AND valor_fixo IS NULL AND valor_diario IS NOT NULL)",
+            "(percentual IS NOT NULL AND valor_fixo IS NULL AND valor_diario IS NULL AND salario_minimo_quantidade IS NULL AND valor_mensal IS NULL) OR "
+            "(percentual IS NULL AND valor_fixo IS NOT NULL AND valor_diario IS NULL AND salario_minimo_quantidade IS NULL AND valor_mensal IS NULL) OR "
+            "(percentual IS NULL AND valor_fixo IS NULL AND valor_diario IS NOT NULL AND salario_minimo_quantidade IS NULL AND valor_mensal IS NULL) OR "
+            "(percentual IS NULL AND valor_fixo IS NULL AND valor_diario IS NULL AND salario_minimo_quantidade IS NOT NULL AND valor_mensal IS NULL) OR "
+            "(percentual IS NULL AND valor_fixo IS NULL AND valor_diario IS NULL AND salario_minimo_quantidade IS NULL AND valor_mensal IS NOT NULL)",
             name="ck_acessorio_percentual_xor_valor_fixo",
         ),
         CheckConstraint(
@@ -56,6 +58,25 @@ class Acessorio(UUIDPk, TimestampMixin, Base):
     # (confirmado com cálculo real do SOSCálculos, seção 3.9/motor).
     valor_diario: Mapped[Decimal | None] = mapped_column(DecimalText(18, 2), nullable=True)
     data_inicio_acumulo: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Multa "Diária (Competência)" — mesmos campos de "Diária (Data
+    # final)" acima, mas quebra em sub-linhas por mês civil, cada uma
+    # corrigida a partir do seu próprio início (confirmado com cálculo
+    # real, seção 3.9/motor). Só tem efeito quando valor_diario preenchido.
+    diaria_por_competencia: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Multa "Salário Mínimo" — quantidade de salários mínimos vigentes em
+    # `data_evento` (aqui rotulada "Data Salário Mínimo" na UI); a camada
+    # de serviço resolve o valor absoluto (cadastro manual, mesma tabela
+    # `salario_minimo_valor` do botão "Salário Mínimo" do passo 2) e
+    # multiplica pela quantidade antes de rodar a linha do tempo de
+    # correção/juros — o motor nunca lida com "salário mínimo" como
+    # conceito, só recebe um valor_fixo já resolvido.
+    salario_minimo_quantidade: Mapped[Decimal | None] = mapped_column(DecimalText(9, 4), nullable=True)
+
+    # Multa "Mensal" — valor fixo lançado uma vez por mês vencido entre
+    # data_inicio_acumulo e data_evento (confirmado com cálculo real,
+    # seção 3.9/motor — ver `_marcos_mensais` em app/engine/acessorios.py).
+    valor_mensal: Mapped[Decimal | None] = mapped_column(DecimalText(18, 2), nullable=True)
 
     # "Tabela de C.M." / "Juros de Mora" do passo 3, modo "Valor
     # Monetário" (paridade SOSCálculos) — só fazem sentido quando

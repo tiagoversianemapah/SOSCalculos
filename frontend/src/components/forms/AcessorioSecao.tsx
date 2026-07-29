@@ -11,13 +11,23 @@ import type { Acessorio, BaseCalculoAcessorio, Processo, TipoAcessorio, TipoVenc
 import { CorrecaoSegmentoEditor } from "./CorrecaoSegmentoEditor";
 import { JurosSegmentoEditor } from "./JurosSegmentoEditor";
 
-export type Subtipo = "condenacao" | "causa" | "valor_monetario" | "diaria_data_final";
+export type Subtipo =
+  | "condenacao"
+  | "causa"
+  | "valor_monetario"
+  | "diaria_data_final"
+  | "diaria_competencia"
+  | "salario_minimo"
+  | "mensal";
 
 const ROTULO_SUBTIPO: Record<Subtipo, string> = {
   condenacao: "Sobre o Valor da Condenação",
   causa: "Sobre o Valor da Causa",
   valor_monetario: "Valor Monetário",
   diaria_data_final: "Diária (Data final)",
+  diaria_competencia: "Diária (Competência)",
+  salario_minimo: "Salário Mínimo",
+  mensal: "Mensal",
 };
 
 const BASE_DO_SUBTIPO: Record<Subtipo, BaseCalculoAcessorio> = {
@@ -25,10 +35,15 @@ const BASE_DO_SUBTIPO: Record<Subtipo, BaseCalculoAcessorio> = {
   causa: "valor_da_causa",
   valor_monetario: "valor_fixo_absoluto",
   diaria_data_final: "valor_fixo_absoluto",
+  diaria_competencia: "valor_fixo_absoluto",
+  salario_minimo: "valor_fixo_absoluto",
+  mensal: "valor_fixo_absoluto",
 };
 
 function subtipoDoAcessorio(a: Acessorio): Subtipo {
-  if (a.valor_diario != null) return "diaria_data_final";
+  if (a.valor_diario != null) return a.diaria_por_competencia ? "diaria_competencia" : "diaria_data_final";
+  if (a.salario_minimo_quantidade != null) return "salario_minimo";
+  if (a.valor_mensal != null) return "mensal";
   if (a.base_calculo === "valor_fixo_absoluto") return "valor_monetario";
   if (a.base_calculo === "valor_da_causa") return "causa";
   return "condenacao";
@@ -102,16 +117,23 @@ export function AcessorioSecao({
     try {
       const subtipo = subtiposPermitidos[0];
       const monetario = subtipo === "valor_monetario";
-      const diaria = subtipo === "diaria_data_final";
+      const diaria = subtipo === "diaria_data_final" || subtipo === "diaria_competencia";
+      const salarioMinimo = subtipo === "salario_minimo";
+      const mensal = subtipo === "mensal";
+      const usaDataEvento = monetario || diaria || salarioMinimo || mensal;
+      const usaInicioAcumulo = diaria || mensal;
       await api.acessorios.criar(processoId, {
         tipo: tipoAcessorio,
         historico: "",
         base_calculo: BASE_DO_SUBTIPO[subtipo],
-        percentual: monetario || diaria ? null : "0",
+        percentual: usaDataEvento ? null : "0",
         valor_fixo: monetario ? "0" : null,
-        data_evento: monetario || diaria ? hoje : null,
+        data_evento: usaDataEvento ? hoje : null,
         valor_diario: diaria ? "0" : null,
-        data_inicio_acumulo: diaria ? hoje : null,
+        data_inicio_acumulo: usaInicioAcumulo ? hoje : null,
+        diaria_por_competencia: subtipo === "diaria_competencia",
+        salario_minimo_quantidade: salarioMinimo ? "1" : null,
+        valor_mensal: mensal ? "0" : null,
         usa_correcao_default: true,
         usa_juros_default: true,
       });
@@ -145,13 +167,43 @@ export function AcessorioSecao({
         data_evento: a.data_evento ?? hoje,
         valor_diario: null,
         data_inicio_acumulo: null,
+        diaria_por_competencia: false,
+        salario_minimo_quantidade: null,
+        valor_mensal: null,
       });
-    } else if (subtipo === "diaria_data_final") {
+    } else if (subtipo === "diaria_data_final" || subtipo === "diaria_competencia") {
       salvar(a.id, {
         base_calculo: "valor_fixo_absoluto",
         percentual: null,
         valor_fixo: null,
         valor_diario: a.valor_diario ?? "0",
+        data_inicio_acumulo: a.data_inicio_acumulo ?? hoje,
+        data_evento: a.data_evento ?? hoje,
+        diaria_por_competencia: subtipo === "diaria_competencia",
+        salario_minimo_quantidade: null,
+        valor_mensal: null,
+      });
+    } else if (subtipo === "salario_minimo") {
+      salvar(a.id, {
+        base_calculo: "valor_fixo_absoluto",
+        percentual: null,
+        valor_fixo: null,
+        valor_diario: null,
+        data_inicio_acumulo: null,
+        diaria_por_competencia: false,
+        salario_minimo_quantidade: a.salario_minimo_quantidade ?? "1",
+        data_evento: a.data_evento ?? hoje,
+        valor_mensal: null,
+      });
+    } else if (subtipo === "mensal") {
+      salvar(a.id, {
+        base_calculo: "valor_fixo_absoluto",
+        percentual: null,
+        valor_fixo: null,
+        valor_diario: null,
+        diaria_por_competencia: false,
+        salario_minimo_quantidade: null,
+        valor_mensal: a.valor_mensal ?? "0",
         data_inicio_acumulo: a.data_inicio_acumulo ?? hoje,
         data_evento: a.data_evento ?? hoje,
       });
@@ -162,6 +214,9 @@ export function AcessorioSecao({
         valor_fixo: null,
         valor_diario: null,
         data_inicio_acumulo: null,
+        diaria_por_competencia: false,
+        salario_minimo_quantidade: null,
+        valor_mensal: null,
       });
     }
   };
@@ -223,8 +278,10 @@ export function AcessorioSecao({
       {itens.map((a) => {
         const subtipo = subtipoDoAcessorio(a);
         const monetario = subtipo === "valor_monetario";
-        const diaria = subtipo === "diaria_data_final";
-        const temCorrecaoPropria = monetario || diaria;
+        const diaria = subtipo === "diaria_data_final" || subtipo === "diaria_competencia";
+        const salarioMinimo = subtipo === "salario_minimo";
+        const mensal = subtipo === "mensal";
+        const temCorrecaoPropria = monetario || diaria || salarioMinimo || mensal;
         return (
           <div className="segmento-bloco" key={a.id}>
             <div className="segmento-linha">
@@ -245,7 +302,7 @@ export function AcessorioSecao({
                 defaultValue={a.historico ?? ""}
                 onBlur={(e) => salvar(a.id, { historico: e.target.value })}
               />
-              {!monetario && !diaria && (
+              {!monetario && !diaria && !salarioMinimo && !mensal && (
                 <input
                   placeholder="% (ex.: 0.10 = 10%)"
                   defaultValue={a.percentual ?? ""}
@@ -272,6 +329,48 @@ export function AcessorioSecao({
                     placeholder="Valor diário"
                     defaultValue={a.valor_diario ?? ""}
                     onBlur={(e) => salvar(a.id, { valor_diario: e.target.value })}
+                  />
+                  <label className="campo-inline">
+                    Início
+                    <input
+                      type="date"
+                      value={a.data_inicio_acumulo ?? ""}
+                      onChange={(e) => salvar(a.id, { data_inicio_acumulo: e.target.value || null })}
+                    />
+                  </label>
+                  <label className="campo-inline">
+                    Fim
+                    <input
+                      type="date"
+                      value={a.data_evento ?? ""}
+                      onChange={(e) => salvar(a.id, { data_evento: e.target.value || null })}
+                    />
+                  </label>
+                </>
+              )}
+              {salarioMinimo && (
+                <>
+                  <input
+                    placeholder="Quantidade"
+                    defaultValue={a.salario_minimo_quantidade ?? ""}
+                    onBlur={(e) => salvar(a.id, { salario_minimo_quantidade: e.target.value })}
+                  />
+                  <label className="campo-inline">
+                    Data Salário Mínimo
+                    <input
+                      type="date"
+                      value={a.data_evento ?? ""}
+                      onChange={(e) => salvar(a.id, { data_evento: e.target.value || null })}
+                    />
+                  </label>
+                </>
+              )}
+              {mensal && (
+                <>
+                  <input
+                    placeholder="Valor mensal"
+                    defaultValue={a.valor_mensal ?? ""}
+                    onBlur={(e) => salvar(a.id, { valor_mensal: e.target.value })}
                   />
                   <label className="campo-inline">
                     Início

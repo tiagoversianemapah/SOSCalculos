@@ -551,6 +551,112 @@ def test_caso_18b_valor_diario_exige_datas_de_acumulo():
         )
 
 
+def test_caso_19_multa_diaria_competencia_dias_por_mes_bate_com_pdf_real():
+    """Multa 'Diária (Competência)' — caso de referência extraído de um
+    PDF real do SOSCálculos: R$10/dia de 01/01/2024 a 01/04/2024, sem
+    correção/juros. O apêndice do PDF mostra a quebra por mês (30, 29,
+    31, 1 dias — 91 no total, 2024 é bissexto) com subtotal de principal
+    R$910,00 antes de qualquer correção — esse subtotal não depende de
+    índice do BCB, então é um valor exato pra conferir aqui."""
+    acessorio = Acessorio(
+        percentual=None,
+        valor_fixo=None,
+        base_calculo=BaseCalculoAcessorio.VALOR_FIXO_ABSOLUTO,
+        data_evento=date(2024, 4, 1),
+        valor_diario=Decimal("10.00"),
+        data_inicio_acumulo=date(2024, 1, 1),
+        diaria_por_competencia=True,
+    )
+    buscar = criar_buscar_variacao({})
+
+    resultado = calcular_acessorio(
+        acessorio, Decimal("0"), Decimal("0"), date(2024, 4, 1), [], [], [], buscar
+    )
+
+    # 300 (jan, 30 dias) + 290 (fev, 29 dias) + 310 (mar, 31 dias) + 10 (abr, 1 dia)
+    assert resultado.valor_apurado == Decimal("910.00")
+    # Cada competência vira uma sub-linha do tempo própria (de sua âncora
+    # até hoje) — sem correção/juros ativos aqui, o valor de cada uma não
+    # muda mês a mês, mas a memória ainda tem uma linha por mês decorrido
+    # em cada sub-linha (jan roda 4 meses, fev 3, mar 2, abr 1 = 10 linhas).
+    assert len(resultado.memoria) == 10
+    valores_iniciais = sorted({str(linha.saldo_inicio) for linha in resultado.memoria if linha.saldo_inicio in (
+        Decimal("300.00"), Decimal("290.00"), Decimal("310.00"), Decimal("10.00")
+    )})
+    assert valores_iniciais == ["10.00", "290.00", "300.00", "310.00"]
+
+
+def test_caso_19b_diaria_competencia_difere_de_diaria_data_final_com_correcao():
+    """Com correção real ativa, "Competência" (corrige cada mês desde seu
+    próprio início) e "Data final" (corrige tudo só a partir do fim) têm
+    que dar resultados DIFERENTES — é essa diferença que justifica os
+    dois tipos existirem."""
+    segmentos_correcao = [CorrecaoSegmento(Indice.IPCA, date(2024, 1, 1), None)]
+    buscar = criar_buscar_variacao({
+        (Indice.IPCA, date(2024, 1, 1)): Decimal("0.02"),
+        (Indice.IPCA, date(2024, 2, 1)): Decimal("0.02"),
+        (Indice.IPCA, date(2024, 3, 1)): Decimal("0.02"),
+        (Indice.IPCA, date(2024, 4, 1)): Decimal("0.02"),
+    })
+    hoje = date(2024, 4, 1)
+
+    data_final = Acessorio(
+        percentual=None, valor_fixo=None, base_calculo=BaseCalculoAcessorio.VALOR_FIXO_ABSOLUTO,
+        data_evento=date(2024, 4, 1), valor_diario=Decimal("10.00"), data_inicio_acumulo=date(2024, 1, 1),
+    )
+    competencia = Acessorio(
+        percentual=None, valor_fixo=None, base_calculo=BaseCalculoAcessorio.VALOR_FIXO_ABSOLUTO,
+        data_evento=date(2024, 4, 1), valor_diario=Decimal("10.00"), data_inicio_acumulo=date(2024, 1, 1),
+        diaria_por_competencia=True,
+    )
+
+    resultado_data_final = calcular_acessorio(
+        data_final, Decimal("0"), Decimal("0"), hoje, segmentos_correcao, [], [], buscar
+    )
+    resultado_competencia = calcular_acessorio(
+        competencia, Decimal("0"), Decimal("0"), hoje, segmentos_correcao, [], [], buscar
+    )
+
+    assert resultado_data_final.valor_apurado != resultado_competencia.valor_apurado
+
+
+def test_caso_20_multa_mensal_bate_com_calculo_real_soscalculos():
+    """Multa 'Mensal' — caso de referência extraído de um PDF real do
+    SOSCálculos: R$100,00 de 01/01/2024 a 01/04/2024, sem correção/juros.
+    O apêndice do PDF mostra 3 lançamentos (01/02, 01/03, 01/04 — um por
+    mês vencido, começando no mês seguinte a data_inicio_acumulo) de
+    R$100,00 cada, subtotal R$300,00."""
+    acessorio = Acessorio(
+        percentual=None,
+        valor_fixo=None,
+        base_calculo=BaseCalculoAcessorio.VALOR_FIXO_ABSOLUTO,
+        data_evento=date(2024, 4, 1),
+        valor_mensal=Decimal("100.00"),
+        data_inicio_acumulo=date(2024, 1, 1),
+    )
+    buscar = criar_buscar_variacao({})
+
+    resultado = calcular_acessorio(
+        acessorio, Decimal("0"), Decimal("0"), date(2024, 4, 1), [], [], [], buscar
+    )
+
+    assert resultado.valor_apurado == Decimal("300.00")
+
+
+def test_caso_20b_valor_mensal_exige_datas_de_acumulo():
+    """valor_mensal sem as datas de início/fim do acúmulo é inválido —
+    fica ambíguo quantos meses contar (mesma regra de valor_diario)."""
+    with pytest.raises(ValueError, match="data_inicio_acumulo"):
+        Acessorio(
+            percentual=None,
+            valor_fixo=None,
+            base_calculo=BaseCalculoAcessorio.VALOR_FIXO_ABSOLUTO,
+            data_evento=date(2024, 4, 1),
+            valor_mensal=Decimal("100.00"),
+            data_inicio_acumulo=None,
+        )
+
+
 def test_caso_17b_acessorio_sobre_o_valor_da_causa_sem_valor_causa_levanta_erro():
     """Sem `valor_causa` preenchido no processo, calcular essa base deve
     falhar com uma mensagem clara em vez de um erro genérico."""

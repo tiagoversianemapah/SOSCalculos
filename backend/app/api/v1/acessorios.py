@@ -26,6 +26,9 @@ _CAMPOS_DIRETOS = (
     "fonte_criterio",
     "valor_diario",
     "data_inicio_acumulo",
+    "diaria_por_competencia",
+    "salario_minimo_quantidade",
+    "valor_mensal",
     "usa_correcao_default",
     "usa_juros_default",
 )

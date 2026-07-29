@@ -244,6 +244,15 @@ export interface Acessorio {
   // e data_evento, que funciona como a "Data Fim" nesse modo).
   valor_diario?: string | null;
   data_inicio_acumulo?: string | null;
+  // Multa "Diária (Competência)" — mesmos campos acima, mas quebra por
+  // mês civil (soma de sub-timelines por competência).
+  diaria_por_competencia?: boolean;
+  // Multa "Salário Mínimo" — quantidade × valor vigente em data_evento
+  // (aqui rotulado "Data Salário Mínimo"); substitui valor_fixo.
+  salario_minimo_quantidade?: string | null;
+  // Multa "Mensal" — um lançamento de valor_mensal por mês vencido
+  // entre data_inicio_acumulo e data_evento.
+  valor_mensal?: string | null;
   // Só fazem sentido quando base_calculo = "valor_fixo_absoluto" —
   // "Tabela de C.M." / "Juros de Mora" do modo "Valor Monetário"
   // (passo 3, paridade SOSCálculos).

@@ -137,6 +137,20 @@ class Acessorio:
     # `valor_fixo` no cálculo da base (mutuamente exclusivos).
     valor_diario: Optional[Decimal] = None
     data_inicio_acumulo: Optional[date] = None
+    # Multa "Diária (Competência)" — confirmado com cálculo real: em vez
+    # de um valor único ancorado na Data Fim, quebra em uma sub-linha por
+    # mês civil (dias daquele mês × valor_diario), cada uma corrigida a
+    # partir do 1º dia daquele mês até hoje (ver acessorios.py). Só tem
+    # efeito quando valor_diario está preenchido.
+    diaria_por_competencia: bool = False
+    # Multa "Mensal" — confirmado com cálculo real: um valor fixo
+    # lançado uma vez por mês vencido entre data_inicio_acumulo e
+    # data_evento (marcos no mesmo dia-do-mês de data_inicio_acumulo,
+    # começando no mês seguinte, até data_evento inclusive — ver
+    # `_marcos_mensais` em acessorios.py), cada lançamento corrigido a
+    # partir da sua própria data até hoje. Mutuamente exclusivo com
+    # valor_diario/valor_fixo.
+    valor_mensal: Optional[Decimal] = None
 
     def __post_init__(self) -> None:
         if self.valor_diario is not None:
@@ -148,6 +162,16 @@ class Acessorio:
                 raise ValueError(
                     "data_inicio_acumulo e data_evento são obrigatórias quando valor_diario "
                     "é informado (multa Diária — Data Início e Data Fim do acúmulo)"
+                )
+        elif self.valor_mensal is not None:
+            if self.base_calculo is not BaseCalculoAcessorio.VALOR_FIXO_ABSOLUTO:
+                raise ValueError(
+                    "valor_mensal só se aplica quando base_calculo = VALOR_FIXO_ABSOLUTO"
+                )
+            if self.data_inicio_acumulo is None or self.data_evento is None:
+                raise ValueError(
+                    "data_inicio_acumulo e data_evento são obrigatórias quando valor_mensal "
+                    "é informado (multa Mensal — Data Início e Data Fim do acúmulo)"
                 )
         elif self.base_calculo is BaseCalculoAcessorio.VALOR_FIXO_ABSOLUTO:
             if self.valor_fixo is None:

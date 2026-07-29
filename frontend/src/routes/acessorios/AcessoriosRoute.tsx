@@ -1,9 +1,8 @@
 // Passo 3 — Acessórios e paradas extraordinárias, reestruturado em
 // seções fixas (paridade SOSCálculos, ver especificacao-tecnica-motor-
 // -calculo-judicial.md seção 0/4). "Diária (Data final)", "Diária
-// (Competência)", "Mensal" e "Salário Mínimo" em Multas ficam
-// desabilitados por enquanto — fórmula de acréscimo ainda não
-// confirmada (ver seção 11 e pendência registrada com o usuário).
+// (Competência)", "Salário Mínimo" e "Mensal" em Multas já confirmados
+// via PDF real do SOSCálculos.
 import { useEffect, useState } from "react";
 import { AcessorioSecao } from "../../components/forms/AcessorioSecao";
 import { Artigo523Secao } from "../../components/forms/Artigo523Secao";
@@ -12,12 +11,6 @@ import { api, mensagemDeErro } from "../../lib/api";
 import { formatarData } from "../../lib/format";
 import type { Acessorio, Parada, Processo } from "../../lib/types";
 import { useWizard } from "../../store/wizardStore";
-
-const MULTAS_DESABILITADAS = [
-  { subtipo: "diaria_competencia", rotulo: "Diária (Competência)" },
-  { subtipo: "mensal", rotulo: "Mensal" },
-  { subtipo: "salario_minimo", rotulo: "Salário Mínimo" },
-];
 
 export function AcessoriosRoute() {
   const { processoId, irParaPasso } = useWizard();
@@ -123,8 +116,15 @@ export function AcessoriosRoute() {
         processo={processo}
         tipoAcessorio="multa"
         acessorios={acessoriosDoTipo("multa")}
-        subtiposPermitidos={["diaria_data_final", "valor_monetario", "condenacao", "causa"]}
-        subtiposDesabilitados={MULTAS_DESABILITADAS}
+        subtiposPermitidos={[
+          "diaria_data_final",
+          "diaria_competencia",
+          "salario_minimo",
+          "mensal",
+          "valor_monetario",
+          "condenacao",
+          "causa",
+        ]}
         onMudou={recarregar}
       />
 

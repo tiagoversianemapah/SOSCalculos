@@ -198,6 +198,66 @@ def test_gerar_por_salario_minimo_sem_cadastro_falha_com_mensagem_clara(client):
     assert "01/2024" in resp.text
 
 
+def test_acessorio_multa_salario_minimo_bate_com_calculo_real_soscalculos(client):
+    """Multa 'Salário Mínimo' — caso de referência extraído de um PDF
+    real do SOSCálculos: 2 salários mínimos em 01/04/2024 = 2 × 1.412,00
+    = R$2.824,00, sem correção/juros próprios."""
+    processo = _criar_processo(client, data_calculo="2024-04-30")
+    processo_id = processo["id"]
+
+    resp = client.post("/api/v1/indices/salario-minimo", json={"competencia": "2024-01-01", "valor": "1412.00"})
+    assert resp.status_code == 201, resp.text
+
+    resp = client.post(
+        f"/api/v1/processos/{processo_id}/acessorios",
+        json={
+            "tipo": "multa",
+            "historico": "multa salário mínimo",
+            "base_calculo": "valor_fixo_absoluto",
+            "data_evento": "2024-04-01",
+            "salario_minimo_quantidade": "2",
+            "usa_correcao_default": False,
+            "usa_juros_default": False,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = client.post(f"/api/v1/processos/{processo_id}/calcular")
+    assert resp.status_code == 200, resp.text
+    resultado = resp.json()
+
+    assert resultado["acessorios"][0]["valor_apurado"] == "2824.00"
+
+
+def test_acessorio_multa_mensal_bate_com_calculo_real_soscalculos(client):
+    """Multa 'Mensal' — caso de referência extraído de um PDF real do
+    SOSCálculos: R$100,00 de 01/01/2024 a 01/04/2024, sem correção/juros
+    próprios = 3 lançamentos mensais (01/02, 01/03, 01/04) = R$300,00."""
+    processo = _criar_processo(client, data_calculo="2024-04-30")
+    processo_id = processo["id"]
+
+    resp = client.post(
+        f"/api/v1/processos/{processo_id}/acessorios",
+        json={
+            "tipo": "multa",
+            "historico": "multa mensal",
+            "base_calculo": "valor_fixo_absoluto",
+            "valor_mensal": "100.00",
+            "data_inicio_acumulo": "2024-01-01",
+            "data_evento": "2024-04-01",
+            "usa_correcao_default": False,
+            "usa_juros_default": False,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = client.post(f"/api/v1/processos/{processo_id}/calcular")
+    assert resp.status_code == 200, resp.text
+    resultado = resp.json()
+
+    assert resultado["acessorios"][0]["valor_apurado"] == "300.00"
+
+
 def test_processo_inexistente_devolve_404(client):
     resp = client.get("/api/v1/processos/00000000-0000-0000-0000-000000000000")
     assert resp.status_code == 404
