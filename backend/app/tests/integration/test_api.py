@@ -154,6 +154,50 @@ def test_deducao_data_calculo_subtrai_valor_flat_do_total(client, engine):
     assert resultado["total_geral"] == "700.00"
 
 
+def test_gerar_por_salario_minimo_usa_valor_vigente_em_degrau(client):
+    """Botão "Salário Mínimo" do passo 2 — uma parcela por mês, valor =
+    percentual × valor vigente na competência (cadastro em degrau: o
+    valor de jan/2024 vale também pra fev/2024, sem precisar recadastrar)."""
+    processo = _criar_processo(client)
+    processo_id = processo["id"]
+
+    resp = client.post("/api/v1/indices/salario-minimo", json={"competencia": "2024-01-01", "valor": "1412.00"})
+    assert resp.status_code == 201, resp.text
+
+    resp = client.post(
+        f"/api/v1/processos/{processo_id}/parcelas/gerar-por-salario-minimo",
+        json={
+            "data_inicial": "2024-01-01",
+            "data_final": "2024-02-01",
+            "percentual_salario": "0.5",
+            "historico": "meio salário",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    parcelas = resp.json()
+    assert len(parcelas) == 2
+    # 1412.00 * 0.5 = 706.00 — vale pros dois meses (fev não tem cadastro
+    # próprio, usa o degrau de jan)
+    assert {p["valor_bruto"] for p in parcelas} == {"706.00"}
+
+
+def test_gerar_por_salario_minimo_sem_cadastro_falha_com_mensagem_clara(client):
+    processo = _criar_processo(client)
+    processo_id = processo["id"]
+
+    resp = client.post(
+        f"/api/v1/processos/{processo_id}/parcelas/gerar-por-salario-minimo",
+        json={
+            "data_inicial": "2024-01-01",
+            "data_final": "2024-01-01",
+            "percentual_salario": "0.5",
+            "historico": "meio salário",
+        },
+    )
+    assert resp.status_code == 422
+    assert "01/2024" in resp.text
+
+
 def test_processo_inexistente_devolve_404(client):
     resp = client.get("/api/v1/processos/00000000-0000-0000-0000-000000000000")
     assert resp.status_code == 404

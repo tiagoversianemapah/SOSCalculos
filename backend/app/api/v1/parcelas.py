@@ -1,6 +1,9 @@
 """Rotas de `parcela` e `pagamento_parcial` (seção 4.5, passo 2)."""
 from __future__ import annotations
 
+import calendar
+from datetime import date
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,13 +11,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.models.enums import DonoTipo
+from app.models.enums import DonoTipo, TipoPagamentoParcial
 from app.models.pagamento_parcial import PagamentoParcial
 from app.models.parcela import Parcela
 from app.models.processo import Processo
 from app.models.segmento import CorrecaoSegmento, JurosSegmento
 from app.schemas.pagamento import PagamentoParcialCreate, PagamentoParcialOut
 from app.schemas.parcela import ParcelaCreate, ParcelaOut, ParcelaUpdate
+from app.schemas.salario_minimo import GerarPorSalarioMinimoRequest
+from app.services.salario_minimo import buscar_valor_vigente
 
 router = APIRouter(tags=["parcelas"])
 
@@ -88,6 +93,100 @@ def criar_parcela(processo_id: UUID, payload: ParcelaCreate, db: Session = Depen
     db.commit()
     db.refresh(parcela)
     return parcela
+
+
+def _vencimentos_em_serie(inicio: date, fim: date, fim_mes: bool) -> list[date]:
+    """Um vencimento por mês entre `inicio` e `fim` (inclusive, por
+    ano-mês) — mesmo dia de `inicio` em cada mês (limitado ao último dia
+    de meses mais curtos), ou o último dia do mês se `fim_mes`. Mesma
+    lógica do gerador "Preenchimento em Série" do frontend, replicada
+    aqui porque "Salário Mínimo" precisa do valor absoluto por
+    competência, que só o backend conhece."""
+    vencimentos: list[date] = []
+    ano, mes = inicio.year, inicio.month
+    dia_fixo = inicio.day
+    guarda = 0
+    while (ano, mes) <= (fim.year, fim.month) and guarda < 1200:
+        ultimo_dia = calendar.monthrange(ano, mes)[1]
+        dia = ultimo_dia if fim_mes else min(dia_fixo, ultimo_dia)
+        vencimentos.append(date(ano, mes, dia))
+        mes += 1
+        if mes > 12:
+            mes = 1
+            ano += 1
+        guarda += 1
+    return vencimentos
+
+
+@router.post("/processos/{processo_id}/parcelas/gerar-por-salario-minimo", response_model=list[ParcelaOut], status_code=201)
+def gerar_parcelas_por_salario_minimo(
+    processo_id: UUID, payload: GerarPorSalarioMinimoRequest, db: Session = Depends(get_db)
+) -> list[Parcela]:
+    """Botão "Salário Mínimo" do passo 2 — uma parcela por mês, com
+    `valor_bruto = percentual_salario * valor_vigente_na_competencia`
+    (seção 3.9/4). Valida TODOS os meses antes de criar QUALQUER
+    parcela — nunca gera metade da série e falha no meio."""
+    _obter_processo_ou_404(db, processo_id)
+    if payload.data_final < payload.data_inicial:
+        raise HTTPException(status_code=422, detail="Data Final não pode ser anterior à Data Inicial")
+
+    vencimentos = _vencimentos_em_serie(payload.data_inicial, payload.data_final, payload.fim_mes)
+
+    valores_por_vencimento: dict[date, Decimal] = {}
+    faltando: list[str] = []
+    for vencimento in vencimentos:
+        competencia = vencimento.replace(day=1)
+        valor_vigente = buscar_valor_vigente(db, competencia)
+        if valor_vigente is None:
+            faltando.append(competencia.strftime("%m/%Y"))
+        else:
+            valores_por_vencimento[vencimento] = valor_vigente
+    if faltando:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Não há salário mínimo cadastrado para: " + ", ".join(faltando) +
+                ". Cadastre o valor vigente dessas competências antes de gerar."
+            ),
+        )
+
+    percentual = Decimal(payload.percentual_salario)
+    percentual_pago = Decimal(payload.percentual_pago) if payload.percentual_pago else None
+
+    criadas: list[Parcela] = []
+    for vencimento in vencimentos:
+        valor_bruto = (percentual * valores_por_vencimento[vencimento]).quantize(Decimal("0.01"))
+        parcela = Parcela(
+            processo_id=processo_id,
+            vencimento=vencimento,
+            historico=payload.historico,
+            valor_bruto=valor_bruto,
+            usa_correcao_default=payload.usa_correcao_default,
+            usa_juros_default=payload.usa_juros_default,
+            multa_percentual=payload.multa_percentual,
+        )
+        db.add(parcela)
+        db.flush()
+        for item in payload.correcao_segmentos_override:
+            db.add(CorrecaoSegmento(parcela_id=parcela.id, dono_tipo=DonoTipo.PARCELA_OVERRIDE, **item.model_dump()))
+        for item in payload.juros_segmentos_override:
+            db.add(JurosSegmento(parcela_id=parcela.id, dono_tipo=DonoTipo.PARCELA_OVERRIDE, **item.model_dump()))
+        if percentual_pago:
+            db.add(
+                PagamentoParcial(
+                    parcela_id=parcela.id,
+                    data=vencimento,
+                    valor=(valor_bruto * percentual_pago).quantize(Decimal("0.01")),
+                    tipo=TipoPagamentoParcial.PAGAMENTO,
+                    descricao="% pago gerado pelo preenchimento por Salário Mínimo",
+                )
+            )
+        criadas.append(parcela)
+
+    db.commit()
+    for parcela in criadas:
+        db.refresh(parcela)
+    return criadas
 
 
 @router.put("/parcelas/{parcela_id}", response_model=ParcelaOut)

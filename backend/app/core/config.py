@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 APP_VERSION = "0.1.0"
-GITHUB_REPO = "tiago/calculo-judicial"  # usado na checagem de versão nova (seção 9)
+GITHUB_REPO = "tiagoversianemapah/SOSCalculos"  # usado na checagem de versão nova (seção 9)
 
 
 def diretorio_dados() -> Path:

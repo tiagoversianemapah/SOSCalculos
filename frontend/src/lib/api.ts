@@ -5,11 +5,13 @@ import type {
   Acessorio,
   CalculoPreview,
   Deducao,
+  GerarPorSalarioMinimoRequest,
   PagamentoParcial,
   Parada,
   Parcela,
   Processo,
   ProcessoListItem,
+  SalarioMinimoValor,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -114,6 +116,14 @@ export const api = {
     atualizar: (id: string, dados: Partial<Parcela>) =>
       requisitar<Parcela>("PUT", `/parcelas/${id}`, dados),
     remover: (id: string) => requisitar<void>("DELETE", `/parcelas/${id}`),
+    gerarPorSalarioMinimo: (processoId: string, dados: GerarPorSalarioMinimoRequest) =>
+      requisitar<Parcela[]>("POST", `/processos/${processoId}/parcelas/gerar-por-salario-minimo`, dados),
+  },
+  salarioMinimo: {
+    listar: () => requisitar<SalarioMinimoValor[]>("GET", "/indices/salario-minimo"),
+    criar: (dados: { competencia: string; valor: string }) =>
+      requisitar<SalarioMinimoValor>("POST", "/indices/salario-minimo", dados),
+    remover: (id: string) => requisitar<void>("DELETE", `/indices/salario-minimo/${id}`),
   },
   pagamentos: {
     criar: (parcelaId: string, dados: Partial<PagamentoParcial>) =>

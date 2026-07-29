@@ -20,6 +20,7 @@ from .pagamento_parcial import PagamentoParcial
 from .parada import ParadaExtraordinaria
 from .parcela import Parcela
 from .processo import Processo
+from .salario_minimo_valor import SalarioMinimoValor
 from .segmento import CorrecaoSegmento, JurosSegmento
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "ParadaExtraordinaria",
     "Parcela",
     "Processo",
+    "SalarioMinimoValor",
     "CorrecaoSegmento",
     "JurosSegmento",
 ]

@@ -7,6 +7,7 @@ implementar agora seria arriscar um recorte errado antes da peça existir.
 from __future__ import annotations
 
 from datetime import date, datetime
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
@@ -17,12 +18,47 @@ from app.core.config import APP_VERSION, caminho_banco
 from app.core.db import get_db
 from app.engine.types import Indice
 from app.models.indice_serie_valor import IndiceSerieValor
+from app.models.salario_minimo_valor import SalarioMinimoValor
+from app.schemas.salario_minimo import SalarioMinimoValorCreate, SalarioMinimoValorOut
 from app.schemas.sistema import AppStatusOut, AtualizarIndicesOut, IndiceStatusOut
 from app.services import versao
 from app.services.backup_service import BackupInvalidoError, exportar_backup, restaurar_backup
 from app.services.indices.atualizador import atualizar_todos
 
 router = APIRouter(tags=["sistema"])
+
+
+@router.get("/indices/salario-minimo", response_model=list[SalarioMinimoValorOut])
+def listar_salario_minimo(db: Session = Depends(get_db)) -> list[SalarioMinimoValor]:
+    return db.execute(
+        select(SalarioMinimoValor).order_by(SalarioMinimoValor.competencia)
+    ).scalars().all()
+
+
+@router.post("/indices/salario-minimo", response_model=SalarioMinimoValorOut, status_code=201)
+def criar_salario_minimo(payload: SalarioMinimoValorCreate, db: Session = Depends(get_db)) -> SalarioMinimoValor:
+    existente = db.execute(
+        select(SalarioMinimoValor).where(SalarioMinimoValor.competencia == payload.competencia.replace(day=1))
+    ).scalar_one_or_none()
+    if existente is not None:
+        existente.valor = payload.valor
+        db.commit()
+        db.refresh(existente)
+        return existente
+    registro = SalarioMinimoValor(competencia=payload.competencia.replace(day=1), valor=payload.valor)
+    db.add(registro)
+    db.commit()
+    db.refresh(registro)
+    return registro
+
+
+@router.delete("/indices/salario-minimo/{registro_id}", status_code=204)
+def remover_salario_minimo(registro_id: UUID, db: Session = Depends(get_db)) -> None:
+    registro = db.get(SalarioMinimoValor, registro_id)
+    if registro is None:
+        raise HTTPException(status_code=404, detail="registro não encontrado")
+    db.delete(registro)
+    db.commit()
 
 
 @router.get("/indices/status", response_model=list[IndiceStatusOut])

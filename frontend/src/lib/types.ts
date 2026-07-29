@@ -347,3 +347,25 @@ export interface CalculoPreview {
   deducoes: ResultadoDeducao[];
   total_geral: string;
 }
+
+// Cadastro manual do valor absoluto (R$) do salário mínimo — botão
+// "Salário Mínimo" do passo 2. Ver app/models/salario_minimo_valor.py:
+// deliberadamente não automatizado nem hardcoded, o usuário cadastra os
+// valores oficiais de cada decreto.
+export interface SalarioMinimoValor {
+  id: string;
+  competencia: string;
+  valor: string;
+}
+
+export interface GerarPorSalarioMinimoRequest {
+  data_inicial: string;
+  data_final: string;
+  percentual_salario: string;
+  percentual_pago?: string | null;
+  fim_mes: boolean;
+  historico: string;
+  usa_correcao_default: boolean;
+  usa_juros_default: boolean;
+  multa_percentual?: string | null;
+}

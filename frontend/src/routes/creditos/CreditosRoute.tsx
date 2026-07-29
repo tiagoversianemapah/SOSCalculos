@@ -4,12 +4,13 @@
 // configuração padrão do processo (passo 1) ou "sem correção"/"sem
 // juros" — configuração avançada (segmentos próprios da parcela) fica
 // atrás do botão "editar", que também dá acesso às deduções datadas
-// (pagamento_parcial). "Importar" (PDF) e "Salário Mínimo" ficam de
-// fora por enquanto — ver pendências no README.
+// (pagamento_parcial). "Importar" (PDF) fica de fora por enquanto —
+// sem exemplo real do que o SOSCálculos extrai (ver especificação, seção 11).
 import { Fragment, useEffect, useState } from "react";
 import { CorrecaoSegmentoEditor } from "../../components/forms/CorrecaoSegmentoEditor";
 import { JurosSegmentoEditor } from "../../components/forms/JurosSegmentoEditor";
 import { PreenchimentoSerieModal } from "../../components/forms/PreenchimentoSerieModal";
+import { SalarioMinimoModal } from "../../components/forms/SalarioMinimoModal";
 import { PagamentoTable } from "../../components/tables/PagamentoTable";
 import { api, mensagemDeErro } from "../../lib/api";
 import { formatarMoeda } from "../../lib/format";
@@ -55,6 +56,7 @@ export function CreditosRoute() {
   const [rascunho, setRascunho] = useState(rascunhoVazio());
   const [erro, setErro] = useState<string | null>(null);
   const [modalSerie, setModalSerie] = useState(false);
+  const [modalSalarioMinimo, setModalSalarioMinimo] = useState(false);
 
   const recarregar = () => {
     if (!processoId) return;
@@ -176,7 +178,7 @@ export function CreditosRoute() {
         <button type="button" disabled={!processoId} onClick={() => setModalSerie(true)}>
           Preenchimento Em Série
         </button>
-        <button type="button" disabled title="Em breve">
+        <button type="button" disabled={!processoId} onClick={() => setModalSalarioMinimo(true)}>
           Salário Mínimo
         </button>
         <button type="button" disabled title="Ainda não disponível — importação a partir de PDF">
@@ -303,6 +305,16 @@ export function CreditosRoute() {
           rotuloJurosDefault={rotuloJuros}
           onGerado={recarregar}
           onFechar={() => setModalSerie(false)}
+        />
+      )}
+
+      {modalSalarioMinimo && processoId && (
+        <SalarioMinimoModal
+          processoId={processoId}
+          rotuloCorrecaoDefault={rotuloCorrecao}
+          rotuloJurosDefault={rotuloJuros}
+          onGerado={recarregar}
+          onFechar={() => setModalSalarioMinimo(false)}
         />
       )}
 
