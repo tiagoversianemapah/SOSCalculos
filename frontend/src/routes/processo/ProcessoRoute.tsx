@@ -4,13 +4,14 @@
 // e Requerido são obrigatórios — o resto pode ficar em branco e o
 // rascunho pode ser salvo incompleto.
 import { useEffect, useState } from "react";
-import { CorrecaoSegmentoEditor } from "../../components/forms/CorrecaoSegmentoEditor";
-import { JurosSegmentoEditor } from "../../components/forms/JurosSegmentoEditor";
+import { CorrecaoSegmentoEditor, regrasCorrecao } from "../../components/forms/CorrecaoSegmentoEditor";
+import { JurosSegmentoEditor, regrasJuros } from "../../components/forms/JurosSegmentoEditor";
 import { EditorRico } from "../../components/ui/EditorRico";
 import { api, mensagemDeErro } from "../../lib/api";
 import { PRESETS_CORRECAO, PRESETS_JUROS } from "../../lib/presets";
 import type { CorrecaoSegmento, JurosSegmento, Processo, TipoVencimento } from "../../lib/types";
 import { CAMPO_DATA_ANCORA, CONTAGENS_JUROS } from "../../lib/types";
+import { Campo, obrigatorio, useValidacao, type RegraCampo } from "../../lib/validacao";
 import { useWizard } from "../../store/wizardStore";
 
 type FormularioProcesso = Omit<Processo, "id">;
@@ -51,7 +52,10 @@ export function ProcessoRoute() {
   const { processoId, definirProcessoId, definirConfiguraDeducoes, irParaPasso } = useWizard();
   const [form, setForm] = useState<FormularioProcesso>(formularioVazio());
   const [salvando, setSalvando] = useState(false);
+  // `erro` aqui é só pra falha vinda do servidor (rede, rejeição da API) —
+  // campo faltando aparece no próprio campo, não numa faixa no topo.
   const [erro, setErro] = useState<string | null>(null);
+  const validacao = useValidacao();
 
   useEffect(() => {
     if (!processoId) return;
@@ -91,28 +95,50 @@ export function ProcessoRoute() {
   // dentro de <button type="button" onClick>, não um <form onSubmit>, então
   // o HTML5 nunca valida isso. "Salvar rascunho" continua permissivo (a
   // especificação permite rascunho incompleto); só "Salvar e Avançar" checa.
-  const camposFaltando = (): string[] => {
-    const faltando: string[] = [];
-    if (!form.requerente.trim()) faltando.push("Requerente");
-    if (!form.requerido.trim()) faltando.push("Requerido");
-    if (!form.data_calculo) faltando.push("Data Cálculo");
-    if (form.correcao_segmentos_default.length === 0) faltando.push("Tabela Correção");
-    if (form.juros_segmentos_default.length === 0) faltando.push("Taxa de Juros");
-    return faltando;
-  };
+  const regras = (): RegraCampo[] => [
+    obrigatorio("data_calculo", form.data_calculo, "A data do cálculo"),
+    obrigatorio("requerente", form.requerente, "O requerente"),
+    obrigatorio("requerido", form.requerido, "O requerido"),
+    {
+      nome: "valor_causa",
+      // Opcional, mas se preenchido tem que ser número — o backend
+      // rejeita texto e a mensagem de lá não diz qual campo é.
+      valido: !form.valor_causa || !Number.isNaN(Number(form.valor_causa)),
+      mensagem: "Informe um número (ex.: 1500.00) ou deixe em branco.",
+    },
+    {
+      nome: "correcao_segmentos_default",
+      valido: form.correcao_segmentos_default.length > 0,
+      mensagem: "Escolha uma tabela de correção monetária.",
+    },
+    ...regrasCorrecao("correcao.", form.correcao_segmentos_default),
+    {
+      nome: "juros_segmentos_default",
+      valido: form.juros_segmentos_default.length > 0,
+      mensagem: "Escolha uma taxa de juros.",
+    },
+    ...regrasJuros("juros.", form.juros_segmentos_default),
+  ];
 
   const salvar = async (avancar: boolean) => {
     setErro(null);
     if (avancar) {
-      const faltando = camposFaltando();
-      if (faltando.length > 0) {
-        setErro(`Preencha antes de avançar: ${faltando.join(", ")}.`);
-        return;
-      }
+      if (!validacao.validar(regras())) return;
+    } else {
+      validacao.limparTudo();
     }
     setSalvando(true);
     try {
-      const dados = { ...form, valor_causa: form.valor_causa || null };
+      // Campos numéricos opcionais: o backend recusa string vazia
+      // (DecimalStr), então "" vira null antes de sair daqui.
+      const dados = {
+        ...form,
+        valor_causa: form.valor_causa || null,
+        juros_segmentos_default: form.juros_segmentos_default.map((s) => ({
+          ...s,
+          taxa_valor: s.taxa_valor || null,
+        })),
+      };
       const salvo = processoId
         ? await api.processos.atualizar(processoId, dados)
         : await api.processos.criar(dados);
@@ -141,22 +167,19 @@ export function ProcessoRoute() {
       <section className="secao-formulario">
         <h3>Cadastro</h3>
         <div className="grade-formulario">
-          <label>
-            Data Cálculo *
-            <input type="date" value={form.data_calculo} onChange={(e) => campo("data_calculo", e.target.value)} required />
-          </label>
+          <Campo nome="data_calculo" validacao={validacao} rotulo={<>Data Cálculo *</>}>
+            <input type="date" value={form.data_calculo} onChange={(e) => campo("data_calculo", e.target.value)} />
+          </Campo>
           <label>
             Processo <span className="campo-opcional">(opcional)</span>
             <input value={form.numero_processo ?? ""} onChange={(e) => campo("numero_processo", e.target.value)} />
           </label>
-          <label>
-            Requerente *
-            <input value={form.requerente} onChange={(e) => campo("requerente", e.target.value)} required />
-          </label>
-          <label>
-            Requerido *
-            <input value={form.requerido} onChange={(e) => campo("requerido", e.target.value)} required />
-          </label>
+          <Campo nome="requerente" validacao={validacao} rotulo={<>Requerente *</>}>
+            <input value={form.requerente} onChange={(e) => campo("requerente", e.target.value)} />
+          </Campo>
+          <Campo nome="requerido" validacao={validacao} rotulo={<>Requerido *</>}>
+            <input value={form.requerido} onChange={(e) => campo("requerido", e.target.value)} />
+          </Campo>
           <label>
             Contrato <span className="campo-opcional">(opcional)</span>
             <input value={form.contrato ?? ""} onChange={(e) => campo("contrato", e.target.value)} />
@@ -177,14 +200,24 @@ export function ProcessoRoute() {
               onChange={(e) => campo("feito", e.target.value)}
             />
           </label>
-          <label>
-            Valor da Causa <span className="campo-opcional">(opcional — usado pelos acessórios "Sobre o Valor da Causa" no passo 3)</span>
+          <Campo
+            nome="valor_causa"
+            validacao={validacao}
+            rotulo={
+              <>
+                Valor da Causa{" "}
+                <span className="campo-opcional">
+                  (opcional — usado pelos acessórios "Sobre o Valor da Causa" no passo 3)
+                </span>
+              </>
+            }
+          >
             <input
               placeholder="0,00"
               value={form.valor_causa ?? ""}
               onChange={(e) => campo("valor_causa", e.target.value)}
             />
-          </label>
+          </Campo>
         </div>
         <label className="campo-largo">
           Observações <span className="campo-opcional">(opcional)</span>
@@ -204,8 +237,7 @@ export function ProcessoRoute() {
       <section className="secao-formulario">
         <h3>Configurações de Correção Monetária</h3>
         <div className="preset-selector">
-          <label>
-            Tabela Correção *
+          <Campo nome="correcao_segmentos_default" validacao={validacao} rotulo={<>Tabela Correção *</>}>
             <select defaultValue="" onChange={(e) => e.target.value && escolherPresetCorrecao(e.target.value)}>
               <option value="" disabled>
                 Selecione…
@@ -220,7 +252,7 @@ export function ProcessoRoute() {
                 </optgroup>
               ))}
             </select>
-          </label>
+          </Campo>
           <span className="texto-auxiliar">
             Escolher aqui preenche a primeira tabela abaixo — ajuste as datas e adicione outras
             tabelas se precisar compor mais de um período.
@@ -230,6 +262,8 @@ export function ProcessoRoute() {
           segmentos={form.correcao_segmentos_default}
           onChange={(segmentos: CorrecaoSegmento[]) => campo("correcao_segmentos_default", segmentos)}
           datasAncora={datasAncora}
+          validacao={validacao}
+          prefixo="correcao."
         />
         <div className="linha-checkbox">
           <input
@@ -255,8 +289,7 @@ export function ProcessoRoute() {
           </select>
         </label>
         <div className="preset-selector">
-          <label>
-            Taxa de Juros *
+          <Campo nome="juros_segmentos_default" validacao={validacao} rotulo={<>Taxa de Juros *</>}>
             <select defaultValue="" onChange={(e) => e.target.value && escolherPresetJuros(e.target.value)}>
               <option value="" disabled>
                 Selecione…
@@ -271,12 +304,14 @@ export function ProcessoRoute() {
                 </optgroup>
               ))}
             </select>
-          </label>
+          </Campo>
         </div>
         <JurosSegmentoEditor
           segmentos={form.juros_segmentos_default}
           onChange={(segmentos: JurosSegmento[]) => campo("juros_segmentos_default", segmentos)}
           datasAncora={datasAncora}
+          validacao={validacao}
+          prefixo="juros."
         />
       </section>
 

@@ -161,6 +161,54 @@ label {
   font-weight: 600;
 }
 
+/* Validação por campo (ver lib/validacao.tsx) — o erro fica no próprio
+   campo, não numa faixa no topo da tela. */
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.campo-invalido > input,
+.campo-invalido > select,
+.campo-invalido > textarea,
+.campo-invalido > .editor-rico,
+.campo-invalido > .segmento-editor {
+  border-color: var(--cor-erro);
+  background: #fef2f2;
+}
+
+.campo-invalido > input:focus,
+.campo-invalido > select:focus,
+.campo-invalido > textarea:focus {
+  outline: 2px solid var(--cor-erro);
+  outline-offset: 1px;
+}
+
+.campo-erro {
+  color: var(--cor-erro);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+/* Campo com rótulo ao lado (ex.: "Início [data]" das multas): mantém
+   rótulo e input na mesma linha, e a mensagem de erro quebra pra linha
+   de baixo ocupando a largura toda. */
+.campo-inline-erro {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+  white-space: nowrap;
+}
+
+.campo-inline-erro > .campo-erro {
+  flex-basis: 100%;
+}
+
 .texto-auxiliar {
   color: #6b7280;
   font-size: 13px;
@@ -251,6 +299,16 @@ label {
   flex-direction: row;
   align-items: center;
   gap: 8px;
+}
+
+/* Rótulo e select ficam lado a lado, mas a mensagem de erro quebra pra
+   linha de baixo (o pedido é sempre "erro embaixo do campo"). */
+.preset-selector .campo {
+  flex-wrap: wrap;
+}
+
+.preset-selector .campo > .campo-erro {
+  flex-basis: 100%;
 }
 
 .campo-inline {

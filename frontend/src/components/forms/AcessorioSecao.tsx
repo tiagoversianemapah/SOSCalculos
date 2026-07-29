@@ -8,8 +8,15 @@ import { useEffect, useRef, useState } from "react";
 import { api, mensagemDeErro } from "../../lib/api";
 import { rotularCorrecaoDefault, rotularJurosDefault } from "../../lib/rotulos";
 import type { Acessorio, BaseCalculoAcessorio, Processo, TipoAcessorio, TipoVencimento } from "../../lib/types";
-import { CorrecaoSegmentoEditor } from "./CorrecaoSegmentoEditor";
-import { JurosSegmentoEditor } from "./JurosSegmentoEditor";
+import {
+  Campo,
+  VALIDACAO_INERTE,
+  obrigatorio,
+  type RegraCampo,
+  type Validacao,
+} from "../../lib/validacao";
+import { CorrecaoSegmentoEditor, regrasCorrecao } from "./CorrecaoSegmentoEditor";
+import { JurosSegmentoEditor, regrasJuros } from "./JurosSegmentoEditor";
 
 export type Subtipo =
   | "condenacao"
@@ -49,6 +56,78 @@ function subtipoDoAcessorio(a: Acessorio): Subtipo {
   return "condenacao";
 }
 
+function regraNumero(nome: string, valor: string | null | undefined, rotulo: string): RegraCampo {
+  if (!valor || !valor.trim()) return { nome, valido: false, mensagem: `${rotulo} é obrigatório.` };
+  return {
+    nome,
+    valido: !Number.isNaN(Number(valor)) && Number(valor) > 0,
+    mensagem: "Informe um número maior que zero.",
+  };
+}
+
+/** Regras de todos os acessórios de uma tela — os campos cobrados mudam
+ * conforme o "Tipo" escolhido na linha (é o mesmo `subtipoDoAcessorio`
+ * que decide o que aparece no JSX, então os dois não saem de sincronia).
+ * Campo de um subtipo que não está selecionado nunca é cobrado. */
+export function regrasAcessorios(acessorios: Acessorio[], processo: Processo): RegraCampo[] {
+  const regras: RegraCampo[] = [];
+  for (const a of acessorios) {
+    const chave = `acessorio.${a.id}`;
+    const subtipo = subtipoDoAcessorio(a);
+    if (subtipo === "condenacao" || subtipo === "causa") {
+      regras.push(regraNumero(`${chave}.percentual`, a.percentual, "O percentual"));
+      // "Sobre o Valor da Causa" depende de um campo de OUTRA tela (passo
+      // 1) — sem ele o cálculo falha lá no fim, longe daqui.
+      if (subtipo === "causa") {
+        regras.push({
+          nome: `${chave}.percentual`,
+          valido: Boolean(processo.valor_causa && Number(processo.valor_causa) > 0),
+          mensagem: 'Preencha o "Valor da Causa" no passo 1 para usar esta base.',
+        });
+      }
+    } else if (subtipo === "valor_monetario") {
+      regras.push(regraNumero(`${chave}.valor_fixo`, a.valor_fixo, "O valor"));
+      regras.push(obrigatorio(`${chave}.data_evento`, a.data_evento, "A data"));
+    } else if (subtipo === "diaria_data_final" || subtipo === "diaria_competencia") {
+      regras.push(regraNumero(`${chave}.valor_diario`, a.valor_diario, "O valor diário"));
+      regras.push(obrigatorio(`${chave}.data_inicio_acumulo`, a.data_inicio_acumulo, "A data de início"));
+      regras.push(obrigatorio(`${chave}.data_evento`, a.data_evento, "A data final"));
+      // Fim <= início daria zero dias e a multa sairia R$ 0,00 calada.
+      if (a.data_inicio_acumulo && a.data_evento && a.data_evento <= a.data_inicio_acumulo) {
+        regras.push({
+          nome: `${chave}.data_evento`,
+          valido: false,
+          mensagem: "A data final tem que ser posterior à de início, senão a multa fica zerada.",
+        });
+      }
+    } else if (subtipo === "salario_minimo") {
+      regras.push(regraNumero(`${chave}.salario_minimo_quantidade`, a.salario_minimo_quantidade, "A quantidade"));
+      regras.push(obrigatorio(`${chave}.data_evento`, a.data_evento, "A data do salário mínimo"));
+    } else if (subtipo === "mensal") {
+      regras.push(regraNumero(`${chave}.valor_mensal`, a.valor_mensal, "O valor mensal"));
+      regras.push(obrigatorio(`${chave}.data_inicio_acumulo`, a.data_inicio_acumulo, "A data de início"));
+      regras.push(obrigatorio(`${chave}.data_evento`, a.data_evento, "A data final"));
+      // Menos de um mês entre as datas = nenhum lançamento = R$ 0,00.
+      if (a.data_inicio_acumulo && a.data_evento && a.data_evento <= a.data_inicio_acumulo) {
+        regras.push({
+          nome: `${chave}.data_evento`,
+          valido: false,
+          mensagem: "A data final tem que ser pelo menos um mês depois da de início.",
+        });
+      }
+    }
+    // Segmentos próprios ficam escondidos atrás do "editar" — a seção se
+    // abre sozinha quando algum deles reprova (ver useEffect na seção).
+    if (!a.usa_correcao_default && a.correcao_segmentos_override.length > 0) {
+      regras.push(...regrasCorrecao(`${chave}.correcao.`, a.correcao_segmentos_override));
+    }
+    if (!a.usa_juros_default && a.juros_segmentos_override.length > 0) {
+      regras.push(...regrasJuros(`${chave}.juros.`, a.juros_segmentos_override));
+    }
+  }
+  return regras;
+}
+
 type OpcaoDefault = "default" | "sem" | "personalizado";
 
 function opcaoCorrecao(a: Acessorio): OpcaoDefault {
@@ -70,6 +149,7 @@ interface Props {
   subtiposPermitidos: Subtipo[];
   subtiposDesabilitados?: { subtipo: string; rotulo: string }[];
   onMudou: () => void;
+  validacao?: Validacao;
 }
 
 export function AcessorioSecao({
@@ -81,6 +161,7 @@ export function AcessorioSecao({
   subtiposPermitidos,
   subtiposDesabilitados = [],
   onMudou,
+  validacao = VALIDACAO_INERTE,
 }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [expandido, setExpandido] = useState<string | null>(null);
@@ -95,6 +176,18 @@ export function AcessorioSecao({
   // (mesma classe de bug já corrigida em wizardStore.tsx).
   const itensRef = useRef(itens);
   itensRef.current = itens;
+
+  // Se a validação reprovou um campo de segmento próprio (escondido
+  // atrás do "editar"), abre a linha sozinha — só então o campo entra no
+  // DOM e o `useValidacao` consegue rolar até ele.
+  useEffect(() => {
+    const chaveComErro = Object.keys(validacao.erros).find(
+      (chave) => chave.includes(".correcao.") || chave.includes(".juros.")
+    );
+    if (!chaveComErro) return;
+    const id = chaveComErro.split(".")[1];
+    if (itens.some((item) => item.id === id)) setExpandido(id);
+  }, [validacao.erros, itens]);
 
   const datasAncora: Partial<Record<TipoVencimento, string | null | undefined>> = {
     da_citacao: processo.data_citacao,
@@ -303,91 +396,123 @@ export function AcessorioSecao({
                 onBlur={(e) => salvar(a.id, { historico: e.target.value })}
               />
               {!monetario && !diaria && !salarioMinimo && !mensal && (
-                <input
-                  placeholder="% (ex.: 0.10 = 10%)"
-                  defaultValue={a.percentual ?? ""}
-                  onBlur={(e) => salvar(a.id, { percentual: e.target.value })}
-                />
+                <Campo nome={`acessorio.${a.id}.percentual`} validacao={validacao} como="div">
+                  <input
+                    placeholder="% (ex.: 0.10 = 10%)"
+                    defaultValue={a.percentual ?? ""}
+                    onBlur={(e) => salvar(a.id, { percentual: e.target.value })}
+                  />
+                </Campo>
               )}
               {monetario && (
                 <>
-                  <input
-                    placeholder="Valor"
-                    defaultValue={a.valor_fixo ?? ""}
-                    onBlur={(e) => salvar(a.id, { valor_fixo: e.target.value })}
-                  />
-                  <input
-                    type="date"
-                    value={a.data_evento ?? ""}
-                    onChange={(e) => salvar(a.id, { data_evento: e.target.value || null })}
-                  />
+                  <Campo nome={`acessorio.${a.id}.valor_fixo`} validacao={validacao} como="div">
+                    <input
+                      placeholder="Valor"
+                      defaultValue={a.valor_fixo ?? ""}
+                      onBlur={(e) => salvar(a.id, { valor_fixo: e.target.value })}
+                    />
+                  </Campo>
+                  <Campo nome={`acessorio.${a.id}.data_evento`} validacao={validacao} como="div">
+                    <input
+                      type="date"
+                      value={a.data_evento ?? ""}
+                      onChange={(e) => salvar(a.id, { data_evento: e.target.value || null })}
+                    />
+                  </Campo>
                 </>
               )}
               {diaria && (
                 <>
-                  <input
-                    placeholder="Valor diário"
-                    defaultValue={a.valor_diario ?? ""}
-                    onBlur={(e) => salvar(a.id, { valor_diario: e.target.value })}
-                  />
-                  <label className="campo-inline">
-                    Início
+                  <Campo nome={`acessorio.${a.id}.valor_diario`} validacao={validacao} como="div">
+                    <input
+                      placeholder="Valor diário"
+                      defaultValue={a.valor_diario ?? ""}
+                      onBlur={(e) => salvar(a.id, { valor_diario: e.target.value })}
+                    />
+                  </Campo>
+                  <Campo
+                    nome={`acessorio.${a.id}.data_inicio_acumulo`}
+                    validacao={validacao}
+                    className="campo-inline-erro"
+                    rotulo="Início"
+                  >
                     <input
                       type="date"
                       value={a.data_inicio_acumulo ?? ""}
                       onChange={(e) => salvar(a.id, { data_inicio_acumulo: e.target.value || null })}
                     />
-                  </label>
-                  <label className="campo-inline">
-                    Fim
+                  </Campo>
+                  <Campo
+                    nome={`acessorio.${a.id}.data_evento`}
+                    validacao={validacao}
+                    className="campo-inline-erro"
+                    rotulo="Fim"
+                  >
                     <input
                       type="date"
                       value={a.data_evento ?? ""}
                       onChange={(e) => salvar(a.id, { data_evento: e.target.value || null })}
                     />
-                  </label>
+                  </Campo>
                 </>
               )}
               {salarioMinimo && (
                 <>
-                  <input
-                    placeholder="Quantidade"
-                    defaultValue={a.salario_minimo_quantidade ?? ""}
-                    onBlur={(e) => salvar(a.id, { salario_minimo_quantidade: e.target.value })}
-                  />
-                  <label className="campo-inline">
-                    Data Salário Mínimo
+                  <Campo nome={`acessorio.${a.id}.salario_minimo_quantidade`} validacao={validacao} como="div">
+                    <input
+                      placeholder="Quantidade"
+                      defaultValue={a.salario_minimo_quantidade ?? ""}
+                      onBlur={(e) => salvar(a.id, { salario_minimo_quantidade: e.target.value })}
+                    />
+                  </Campo>
+                  <Campo
+                    nome={`acessorio.${a.id}.data_evento`}
+                    validacao={validacao}
+                    className="campo-inline-erro"
+                    rotulo="Data Salário Mínimo"
+                  >
                     <input
                       type="date"
                       value={a.data_evento ?? ""}
                       onChange={(e) => salvar(a.id, { data_evento: e.target.value || null })}
                     />
-                  </label>
+                  </Campo>
                 </>
               )}
               {mensal && (
                 <>
-                  <input
-                    placeholder="Valor mensal"
-                    defaultValue={a.valor_mensal ?? ""}
-                    onBlur={(e) => salvar(a.id, { valor_mensal: e.target.value })}
-                  />
-                  <label className="campo-inline">
-                    Início
+                  <Campo nome={`acessorio.${a.id}.valor_mensal`} validacao={validacao} como="div">
+                    <input
+                      placeholder="Valor mensal"
+                      defaultValue={a.valor_mensal ?? ""}
+                      onBlur={(e) => salvar(a.id, { valor_mensal: e.target.value })}
+                    />
+                  </Campo>
+                  <Campo
+                    nome={`acessorio.${a.id}.data_inicio_acumulo`}
+                    validacao={validacao}
+                    className="campo-inline-erro"
+                    rotulo="Início"
+                  >
                     <input
                       type="date"
                       value={a.data_inicio_acumulo ?? ""}
                       onChange={(e) => salvar(a.id, { data_inicio_acumulo: e.target.value || null })}
                     />
-                  </label>
-                  <label className="campo-inline">
-                    Fim
+                  </Campo>
+                  <Campo
+                    nome={`acessorio.${a.id}.data_evento`}
+                    validacao={validacao}
+                    className="campo-inline-erro"
+                    rotulo="Fim"
+                  >
                     <input
                       type="date"
                       value={a.data_evento ?? ""}
                       onChange={(e) => salvar(a.id, { data_evento: e.target.value || null })}
                     />
-                  </label>
+                  </Campo>
                 </>
               )}
               <button type="button" onClick={() => setExpandido(expandido === a.id ? null : a.id)}>
@@ -424,6 +549,8 @@ export function AcessorioSecao({
                     segmentos={a.correcao_segmentos_override}
                     onChange={(segmentos) => salvar(a.id, { correcao_segmentos_override: segmentos })}
                     datasAncora={datasAncora}
+                    validacao={validacao}
+                    prefixo={`acessorio.${a.id}.correcao.`}
                   />
                 )}
                 {temCorrecaoPropria && opcaoJuros(a) === "personalizado" && (
@@ -431,6 +558,8 @@ export function AcessorioSecao({
                     segmentos={a.juros_segmentos_override}
                     onChange={(segmentos) => salvar(a.id, { juros_segmentos_override: segmentos })}
                     datasAncora={datasAncora}
+                    validacao={validacao}
+                    prefixo={`acessorio.${a.id}.juros.`}
                   />
                 )}
                 <label>

@@ -5,6 +5,7 @@
 // vencimento em vez do dia de Data Inicial repetido.
 import { useState } from "react";
 import { api, mensagemDeErro } from "../../lib/api";
+import { Campo, obrigatorio, useValidacao, type RegraCampo } from "../../lib/validacao";
 
 interface Props {
   processoId: string;
@@ -54,13 +55,38 @@ export function PreenchimentoSerieModal({
   const [multaPercentual, setMultaPercentual] = useState("");
   const [historico, setHistorico] = useState("");
   const [gerando, setGerando] = useState(false);
+  // Só falha de servidor — campo faltando aparece no próprio campo.
   const [erro, setErro] = useState<string | null>(null);
+  const validacao = useValidacao();
 
   const gerar = async () => {
-    if (!dataInicial || !dataFinal || !valor || !historico) {
-      setErro("Preencha data inicial, data final, valor e histórico.");
-      return;
-    }
+    const regras: RegraCampo[] = [
+      obrigatorio("data_inicial", dataInicial, "A data inicial"),
+      obrigatorio("data_final", dataFinal, "A data final"),
+      {
+        nome: "data_final",
+        // Fim antes do início geraria zero parcelas em silêncio.
+        valido: !dataInicial || !dataFinal || dataFinal >= dataInicial,
+        mensagem: "A data final não pode ser anterior à inicial.",
+      },
+      {
+        nome: "valor",
+        valido: Boolean(valor && !Number.isNaN(Number(valor)) && Number(valor) > 0),
+        mensagem: valor ? "Informe um valor numérico maior que zero." : "O valor é obrigatório.",
+      },
+      {
+        nome: "perc_pago",
+        valido: !percPago || (!Number.isNaN(Number(percPago)) && Number(percPago) >= 0 && Number(percPago) <= 100),
+        mensagem: "Informe uma porcentagem entre 0 e 100.",
+      },
+      {
+        nome: "multa_percentual",
+        valido: !multaPercentual || !Number.isNaN(Number(multaPercentual)),
+        mensagem: "Informe uma porcentagem (ex.: 10).",
+      },
+      obrigatorio("historico", historico, "O histórico"),
+    ];
+    if (!validacao.validar(regras)) return;
     setErro(null);
     setGerando(true);
     try {
@@ -105,22 +131,26 @@ export function PreenchimentoSerieModal({
         </div>
         {erro && <p className="erro">{erro}</p>}
         <div className="grade-formulario">
-          <label>
-            Data Inicial *
+          <Campo nome="data_inicial" validacao={validacao} rotulo={<>Data Inicial *</>}>
             <input type="date" value={dataInicial} onChange={(e) => setDataInicial(e.target.value)} />
-          </label>
-          <label>
-            Data Final *
+          </Campo>
+          <Campo nome="data_final" validacao={validacao} rotulo={<>Data Final *</>}>
             <input type="date" value={dataFinal} onChange={(e) => setDataFinal(e.target.value)} />
-          </label>
-          <label>
-            Valor *
+          </Campo>
+          <Campo nome="valor" validacao={validacao} rotulo={<>Valor *</>}>
             <input placeholder="0,00" value={valor} onChange={(e) => setValor(e.target.value)} />
-          </label>
-          <label>
-            % Pago <span className="campo-opcional">(opcional)</span>
+          </Campo>
+          <Campo
+            nome="perc_pago"
+            validacao={validacao}
+            rotulo={
+              <>
+                % Pago <span className="campo-opcional">(opcional)</span>
+              </>
+            }
+          >
             <input placeholder="0" value={percPago} onChange={(e) => setPercPago(e.target.value)} />
-          </label>
+          </Campo>
         </div>
         <div className="linha-checkbox">
           <input type="checkbox" id="fim-mes" checked={fimMes} onChange={(e) => setFimMes(e.target.checked)} />
@@ -141,15 +171,21 @@ export function PreenchimentoSerieModal({
               <option value="sem">Sem Juros</option>
             </select>
           </label>
-          <label>
-            Multa % <span className="campo-opcional">(opcional)</span>
+          <Campo
+            nome="multa_percentual"
+            validacao={validacao}
+            rotulo={
+              <>
+                Multa % <span className="campo-opcional">(opcional)</span>
+              </>
+            }
+          >
             <input placeholder="0" value={multaPercentual} onChange={(e) => setMultaPercentual(e.target.value)} />
-          </label>
+          </Campo>
         </div>
-        <label className="campo-largo">
-          Histórico *
+        <Campo nome="historico" validacao={validacao} className="campo-largo" rotulo={<>Histórico *</>}>
           <input value={historico} onChange={(e) => setHistorico(e.target.value)} />
-        </label>
+        </Campo>
         <div className="modal-rodape">
           <button type="button" className="primario" disabled={gerando} onClick={gerar}>
             {gerando ? "gerando…" : "Gerar"}

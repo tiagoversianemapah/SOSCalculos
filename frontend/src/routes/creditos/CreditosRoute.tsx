@@ -7,8 +7,8 @@
 // (pagamento_parcial). "Importar" (PDF) fica de fora por enquanto —
 // sem exemplo real do que o SOSCálculos extrai (ver especificação, seção 11).
 import { Fragment, useEffect, useState } from "react";
-import { CorrecaoSegmentoEditor } from "../../components/forms/CorrecaoSegmentoEditor";
-import { JurosSegmentoEditor } from "../../components/forms/JurosSegmentoEditor";
+import { CorrecaoSegmentoEditor, regrasCorrecao } from "../../components/forms/CorrecaoSegmentoEditor";
+import { JurosSegmentoEditor, regrasJuros } from "../../components/forms/JurosSegmentoEditor";
 import { PreenchimentoSerieModal } from "../../components/forms/PreenchimentoSerieModal";
 import { SalarioMinimoModal } from "../../components/forms/SalarioMinimoModal";
 import { PagamentoTable } from "../../components/tables/PagamentoTable";
@@ -16,6 +16,7 @@ import { api, mensagemDeErro } from "../../lib/api";
 import { formatarMoeda } from "../../lib/format";
 import { rotularCorrecaoDefault, rotularJurosDefault } from "../../lib/rotulos";
 import type { Parcela, Processo } from "../../lib/types";
+import { Campo, obrigatorio, useValidacao, type RegraCampo, type Validacao } from "../../lib/validacao";
 import { useWizard } from "../../store/wizardStore";
 
 type OpcaoDefault = "default" | "sem" | "personalizado";
@@ -48,15 +49,28 @@ function percentualParaExibicao(fracao: string | null | undefined): string {
   return (Number(fracao) * 100).toString();
 }
 
+function regraValorMonetario(nome: string, valor: string, rotulo: string): RegraCampo {
+  if (!valor || !valor.trim()) {
+    return { nome, valido: false, mensagem: `${rotulo} é obrigatório.` };
+  }
+  return {
+    nome,
+    valido: !Number.isNaN(Number(valor)) && Number(valor) > 0,
+    mensagem: "Informe um valor numérico maior que zero (ex.: 1500.00).",
+  };
+}
+
 export function CreditosRoute() {
   const { processoId, irParaPasso } = useWizard();
   const [processo, setProcesso] = useState<Processo | null>(null);
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
   const [expandida, setExpandida] = useState<string | null>(null);
   const [rascunho, setRascunho] = useState(rascunhoVazio());
+  // Só falha de servidor — campo faltando aparece no próprio campo.
   const [erro, setErro] = useState<string | null>(null);
   const [modalSerie, setModalSerie] = useState(false);
   const [modalSalarioMinimo, setModalSalarioMinimo] = useState(false);
+  const validacao = useValidacao();
 
   const recarregar = () => {
     if (!processoId) return;
@@ -135,14 +149,12 @@ export function CreditosRoute() {
   const adicionar = async () => {
     if (!processoId) return;
     setErro(null);
-    const faltando: string[] = [];
-    if (!rascunho.vencimento) faltando.push("Vencimento");
-    if (!rascunho.historico.trim()) faltando.push("Histórico");
-    if (!rascunho.valor_bruto) faltando.push("Vlr Bruto");
-    if (faltando.length > 0) {
-      setErro(`Preencha antes de adicionar a linha: ${faltando.join(", ")}.`);
-      return;
-    }
+    const regras: RegraCampo[] = [
+      obrigatorio("rascunho.vencimento", rascunho.vencimento, "O vencimento"),
+      obrigatorio("rascunho.historico", rascunho.historico, "O histórico"),
+      regraValorMonetario("rascunho.valor_bruto", rascunho.valor_bruto, "O valor bruto"),
+    ];
+    if (!validacao.validar(regras)) return;
     try {
       await api.parcelas.criar(processoId, rascunho);
       setRascunho(rascunhoVazio());
@@ -155,9 +167,36 @@ export function CreditosRoute() {
   const continuar = () => {
     setErro(null);
     if (parcelas.length === 0) {
-      setErro("Adicione pelo menos uma parcela antes de continuar.");
+      // Sem nenhuma parcela ainda: leva o usuário pra linha em branco no
+      // fim da planilha, que é onde ele precisa digitar.
+      validacao.validar([
+        {
+          nome: "rascunho.vencimento",
+          valido: false,
+          mensagem: "Adicione pelo menos uma parcela antes de continuar.",
+        },
+      ]);
       return;
     }
+    // Linhas já criadas podem ter sido esvaziadas na edição inline, e os
+    // segmentos "Personalizado…" ficam escondidos atrás do botão "editar"
+    // — por isso cada regra desses leva um `revelar` que abre a linha.
+    const regras: RegraCampo[] = [];
+    for (const parcela of parcelas) {
+      const abrirLinha = () => setExpandida(parcela.id);
+      regras.push(obrigatorio(`parcela.${parcela.id}.vencimento`, parcela.vencimento, "O vencimento"));
+      regras.push(obrigatorio(`parcela.${parcela.id}.historico`, parcela.historico, "O histórico"));
+      regras.push(regraValorMonetario(`parcela.${parcela.id}.valor_bruto`, parcela.valor_bruto, "O valor bruto"));
+      if (!parcela.usa_correcao_default && parcela.correcao_segmentos_override.length > 0) {
+        regras.push(
+          ...regrasCorrecao(`parcela.${parcela.id}.correcao.`, parcela.correcao_segmentos_override, abrirLinha)
+        );
+      }
+      if (!parcela.usa_juros_default && parcela.juros_segmentos_override.length > 0) {
+        regras.push(...regrasJuros(`parcela.${parcela.id}.juros.`, parcela.juros_segmentos_override, abrirLinha));
+      }
+    }
+    if (!validacao.validar(regras)) return;
     irParaPasso(3);
   };
 
@@ -208,27 +247,33 @@ export function CreditosRoute() {
                 <tr>
                   <td>{i + 1}</td>
                   <td>
-                    <input
-                      type="date"
-                      value={parcela.vencimento}
-                      onChange={(e) => setParcelas((ps) => ps.map((p) => (p.id === parcela.id ? { ...p, vencimento: e.target.value } : p)))}
-                      onBlur={(e) => salvarParcela(parcela.id, { vencimento: e.target.value })}
-                    />
+                    <Campo nome={`parcela.${parcela.id}.vencimento`} validacao={validacao} como="div">
+                      <input
+                        type="date"
+                        value={parcela.vencimento}
+                        onChange={(e) => setParcelas((ps) => ps.map((p) => (p.id === parcela.id ? { ...p, vencimento: e.target.value } : p)))}
+                        onBlur={(e) => salvarParcela(parcela.id, { vencimento: e.target.value })}
+                      />
+                    </Campo>
                   </td>
                   <td>
-                    <input
-                      value={parcela.historico}
-                      onChange={(e) => setParcelas((ps) => ps.map((p) => (p.id === parcela.id ? { ...p, historico: e.target.value } : p)))}
-                      onBlur={(e) => salvarParcela(parcela.id, { historico: e.target.value })}
-                    />
+                    <Campo nome={`parcela.${parcela.id}.historico`} validacao={validacao} como="div">
+                      <input
+                        value={parcela.historico}
+                        onChange={(e) => setParcelas((ps) => ps.map((p) => (p.id === parcela.id ? { ...p, historico: e.target.value } : p)))}
+                        onBlur={(e) => salvarParcela(parcela.id, { historico: e.target.value })}
+                      />
+                    </Campo>
                   </td>
                   <td>
-                    <input
-                      placeholder="0,00"
-                      value={parcela.valor_bruto}
-                      onChange={(e) => setParcelas((ps) => ps.map((p) => (p.id === parcela.id ? { ...p, valor_bruto: e.target.value } : p)))}
-                      onBlur={(e) => salvarParcela(parcela.id, { valor_bruto: e.target.value })}
-                    />
+                    <Campo nome={`parcela.${parcela.id}.valor_bruto`} validacao={validacao} como="div">
+                      <input
+                        placeholder="0,00"
+                        value={parcela.valor_bruto}
+                        onChange={(e) => setParcelas((ps) => ps.map((p) => (p.id === parcela.id ? { ...p, valor_bruto: e.target.value } : p)))}
+                        onBlur={(e) => salvarParcela(parcela.id, { valor_bruto: e.target.value })}
+                      />
+                    </Campo>
                   </td>
                   <td className="celula-somente-leitura">{formatarMoeda(totalPago(parcela))}</td>
                   <td className="celula-somente-leitura">{formatarMoeda(parcela.valor_apurado)}</td>
@@ -270,7 +315,12 @@ export function CreditosRoute() {
                 {expandida === parcela.id && (
                   <tr>
                     <td colSpan={10}>
-                      <ParcelaDetalhe parcela={parcela} onSalvar={(patch) => salvarParcela(parcela.id, patch)} onMudouPagamentos={recarregar} />
+                      <ParcelaDetalhe
+                        parcela={parcela}
+                        onSalvar={(patch) => salvarParcela(parcela.id, patch)}
+                        onMudouPagamentos={recarregar}
+                        validacao={validacao}
+                      />
                     </td>
                   </tr>
                 )}
@@ -279,13 +329,19 @@ export function CreditosRoute() {
             <tr>
               <td>{parcelas.length + 1}</td>
               <td>
-                <input type="date" value={rascunho.vencimento} onChange={(e) => setRascunho({ ...rascunho, vencimento: e.target.value })} />
+                <Campo nome="rascunho.vencimento" validacao={validacao} como="div">
+                  <input type="date" value={rascunho.vencimento} onChange={(e) => setRascunho({ ...rascunho, vencimento: e.target.value })} />
+                </Campo>
               </td>
               <td>
-                <input placeholder="histórico" value={rascunho.historico} onChange={(e) => setRascunho({ ...rascunho, historico: e.target.value })} />
+                <Campo nome="rascunho.historico" validacao={validacao} como="div">
+                  <input placeholder="histórico" value={rascunho.historico} onChange={(e) => setRascunho({ ...rascunho, historico: e.target.value })} />
+                </Campo>
               </td>
               <td>
-                <input placeholder="0,00" value={rascunho.valor_bruto} onChange={(e) => setRascunho({ ...rascunho, valor_bruto: e.target.value })} />
+                <Campo nome="rascunho.valor_bruto" validacao={validacao} como="div">
+                  <input placeholder="0,00" value={rascunho.valor_bruto} onChange={(e) => setRascunho({ ...rascunho, valor_bruto: e.target.value })} />
+                </Campo>
               </td>
               <td colSpan={5} />
               <td>
@@ -334,10 +390,12 @@ function ParcelaDetalhe({
   parcela,
   onSalvar,
   onMudouPagamentos,
+  validacao,
 }: {
   parcela: Parcela;
   onSalvar: (patch: Partial<Parcela>) => void;
   onMudouPagamentos: () => void;
+  validacao: Validacao;
 }) {
   const personalizadaCorrecao = !parcela.usa_correcao_default;
   const personalizadaJuros = !parcela.usa_juros_default;
@@ -348,12 +406,16 @@ function ParcelaDetalhe({
         <CorrecaoSegmentoEditor
           segmentos={parcela.correcao_segmentos_override}
           onChange={(segmentos) => onSalvar({ correcao_segmentos_override: segmentos })}
+          validacao={validacao}
+          prefixo={`parcela.${parcela.id}.correcao.`}
         />
       )}
       {personalizadaJuros && (
         <JurosSegmentoEditor
           segmentos={parcela.juros_segmentos_override}
           onChange={(segmentos) => onSalvar({ juros_segmentos_override: segmentos })}
+          validacao={validacao}
+          prefixo={`parcela.${parcela.id}.juros.`}
         />
       )}
 

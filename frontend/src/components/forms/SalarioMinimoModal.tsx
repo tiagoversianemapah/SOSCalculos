@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { api, mensagemDeErro } from "../../lib/api";
 import { formatarMoeda } from "../../lib/format";
 import type { SalarioMinimoValor } from "../../lib/types";
+import { Campo, obrigatorio, useValidacao, type RegraCampo } from "../../lib/validacao";
 
 interface Props {
   processoId: string;
@@ -34,6 +35,11 @@ export function SalarioMinimoModal({
   const [novaCompetencia, setNovaCompetencia] = useState("");
   const [novoValor, setNovoValor] = useState("");
   const [erroCadastro, setErroCadastro] = useState<string | null>(null);
+  // Duas validações independentes: o cadastro de valores e o gerador de
+  // linhas são formulários separados dentro do mesmo modal — um erro num
+  // não pode marcar campo do outro.
+  const validacaoCadastro = useValidacao();
+  const validacaoGerador = useValidacao();
 
   const [dataInicial, setDataInicial] = useState("");
   const [dataFinal, setDataFinal] = useState("");
@@ -54,10 +60,22 @@ export function SalarioMinimoModal({
 
   const adicionarValor = async () => {
     setErroCadastro(null);
-    if (!novaCompetencia || !novoValor) {
-      setErroCadastro("Preencha a competência e o valor.");
-      return;
-    }
+    const regras: RegraCampo[] = [
+      obrigatorio("competencia", novaCompetencia, "A competência"),
+      {
+        nome: "novo_valor",
+        valido: Boolean(novoValor && !Number.isNaN(Number(novoValor)) && Number(novoValor) > 0),
+        mensagem: novoValor ? "Informe um valor numérico maior que zero." : "O valor é obrigatório.",
+      },
+      {
+        nome: "competencia",
+        // Cadastrar duas vezes a mesma competência estoura a UNIQUE lá no
+        // banco, com uma mensagem que não diz qual campo é.
+        valido: !valores.some((v) => v.competencia.slice(0, 7) === novaCompetencia),
+        mensagem: "Essa competência já está cadastrada — remova a linha antiga antes.",
+      },
+    ];
+    if (!validacaoCadastro.validar(regras)) return;
     try {
       await api.salarioMinimo.criar({ competencia: `${novaCompetencia}-01`, valor: novoValor });
       setNovaCompetencia("");
@@ -74,10 +92,41 @@ export function SalarioMinimoModal({
   };
 
   const gerar = async () => {
-    if (!dataInicial || !dataFinal || !percSalario || !historico) {
-      setErro("Preencha data inicial, data final, % do salário e histórico.");
-      return;
-    }
+    const regras: RegraCampo[] = [
+      obrigatorio("data_inicial", dataInicial, "A data inicial"),
+      obrigatorio("data_final", dataFinal, "A data final"),
+      {
+        nome: "data_final",
+        valido: !dataInicial || !dataFinal || dataFinal >= dataInicial,
+        mensagem: "A data final não pode ser anterior à inicial.",
+      },
+      {
+        nome: "perc_salario",
+        valido: Boolean(percSalario && !Number.isNaN(Number(percSalario)) && Number(percSalario) > 0),
+        mensagem: percSalario
+          ? "Informe uma porcentagem maior que zero (ex.: 100 para um salário)."
+          : "A porcentagem do salário é obrigatória.",
+      },
+      {
+        nome: "perc_pago",
+        valido: !percPago || (!Number.isNaN(Number(percPago)) && Number(percPago) >= 0 && Number(percPago) <= 100),
+        mensagem: "Informe uma porcentagem entre 0 e 100.",
+      },
+      {
+        nome: "multa_percentual",
+        valido: !multaPercentual || !Number.isNaN(Number(multaPercentual)),
+        mensagem: "Informe uma porcentagem (ex.: 10).",
+      },
+      {
+        nome: "data_inicial",
+        // Sem nenhum valor cadastrado o backend recusa tudo — melhor
+        // dizer isso aqui do que deixar a geração falhar depois.
+        valido: valores.length > 0,
+        mensagem: "Cadastre ao menos um valor de salário mínimo acima antes de gerar.",
+      },
+      obrigatorio("historico", historico, "O histórico"),
+    ];
+    if (!validacaoGerador.validar(regras)) return;
     setErro(null);
     setGerando(true);
     try {
@@ -142,14 +191,12 @@ export function SalarioMinimoModal({
           </table>
         )}
         <div className="grade-formulario">
-          <label>
-            Competência (mês/ano)
+          <Campo nome="competencia" validacao={validacaoCadastro} rotulo="Competência (mês/ano)">
             <input type="month" value={novaCompetencia} onChange={(e) => setNovaCompetencia(e.target.value)} />
-          </label>
-          <label>
-            Valor (R$)
+          </Campo>
+          <Campo nome="novo_valor" validacao={validacaoCadastro} rotulo="Valor (R$)">
             <input placeholder="0,00" value={novoValor} onChange={(e) => setNovoValor(e.target.value)} />
-          </label>
+          </Campo>
         </div>
         <button type="button" onClick={adicionarValor}>
           + adicionar valor
@@ -160,22 +207,26 @@ export function SalarioMinimoModal({
         <h4>Gerar linhas de crédito</h4>
         {erro && <p className="erro">{erro}</p>}
         <div className="grade-formulario">
-          <label>
-            Data Inicial *
+          <Campo nome="data_inicial" validacao={validacaoGerador} rotulo={<>Data Inicial *</>}>
             <input type="date" value={dataInicial} onChange={(e) => setDataInicial(e.target.value)} />
-          </label>
-          <label>
-            Data Final *
+          </Campo>
+          <Campo nome="data_final" validacao={validacaoGerador} rotulo={<>Data Final *</>}>
             <input type="date" value={dataFinal} onChange={(e) => setDataFinal(e.target.value)} />
-          </label>
-          <label>
-            Perc. Salário (%) *
+          </Campo>
+          <Campo nome="perc_salario" validacao={validacaoGerador} rotulo={<>Perc. Salário (%) *</>}>
             <input placeholder="0" value={percSalario} onChange={(e) => setPercSalario(e.target.value)} />
-          </label>
-          <label>
-            % Pago <span className="campo-opcional">(opcional)</span>
+          </Campo>
+          <Campo
+            nome="perc_pago"
+            validacao={validacaoGerador}
+            rotulo={
+              <>
+                % Pago <span className="campo-opcional">(opcional)</span>
+              </>
+            }
+          >
             <input placeholder="0" value={percPago} onChange={(e) => setPercPago(e.target.value)} />
-          </label>
+          </Campo>
         </div>
         <div className="linha-checkbox">
           <input type="checkbox" id="fim-mes-sm" checked={fimMes} onChange={(e) => setFimMes(e.target.checked)} />
@@ -196,15 +247,21 @@ export function SalarioMinimoModal({
               <option value="sem">Sem Juros</option>
             </select>
           </label>
-          <label>
-            Multa % <span className="campo-opcional">(opcional)</span>
+          <Campo
+            nome="multa_percentual"
+            validacao={validacaoGerador}
+            rotulo={
+              <>
+                Multa % <span className="campo-opcional">(opcional)</span>
+              </>
+            }
+          >
             <input placeholder="0" value={multaPercentual} onChange={(e) => setMultaPercentual(e.target.value)} />
-          </label>
+          </Campo>
         </div>
-        <label className="campo-largo">
-          Histórico *
+        <Campo nome="historico" validacao={validacaoGerador} className="campo-largo" rotulo={<>Histórico *</>}>
           <input value={historico} onChange={(e) => setHistorico(e.target.value)} />
-        </label>
+        </Campo>
         <div className="modal-rodape">
           <button type="button" className="primario" disabled={gerando} onClick={gerar}>
             {gerando ? "gerando…" : "Gerar"}

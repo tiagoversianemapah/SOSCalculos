@@ -4,12 +4,13 @@
 // (Competência)", "Salário Mínimo" e "Mensal" em Multas já confirmados
 // via PDF real do SOSCálculos.
 import { useEffect, useState } from "react";
-import { AcessorioSecao } from "../../components/forms/AcessorioSecao";
-import { Artigo523Secao } from "../../components/forms/Artigo523Secao";
+import { AcessorioSecao, regrasAcessorios } from "../../components/forms/AcessorioSecao";
+import { Artigo523Secao, regrasArtigo523 } from "../../components/forms/Artigo523Secao";
 import { ParadaForm, type RascunhoParada } from "../../components/forms/ParadaForm";
 import { api, mensagemDeErro } from "../../lib/api";
 import { formatarData } from "../../lib/format";
 import type { Acessorio, Parada, Processo } from "../../lib/types";
+import { Campo, useValidacao } from "../../lib/validacao";
 import { useWizard } from "../../store/wizardStore";
 
 export function AcessoriosRoute() {
@@ -17,7 +18,9 @@ export function AcessoriosRoute() {
   const [processo, setProcesso] = useState<Processo | null>(null);
   const [acessorios, setAcessorios] = useState<Acessorio[]>([]);
   const [paradas, setParadas] = useState<Parada[]>([]);
+  // Só falha de servidor — campo faltando aparece no próprio campo.
   const [erro, setErro] = useState<string | null>(null);
+  const validacao = useValidacao();
 
   const recarregar = () => {
     if (!processoId) return;
@@ -63,6 +66,33 @@ export function AcessoriosRoute() {
   const acessoriosDoTipo = (tipo: string) => acessorios.filter((a) => a.tipo === tipo);
   const honorariosContratuais = acessorios.find((a) => a.tipo === "honorarios_contratuais");
 
+  // Os tipos desenhados por <AcessorioSecao> — os do art. 523 e os
+  // honorários contratuais têm UI própria e regras próprias, então não
+  // entram aqui (uma regra sem campo na tela não teria onde aparecer).
+  const TIPOS_EM_SECAO = ["honorarios_sucumbencia", "honorarios_execucao", "multa", "custas_processuais"];
+
+  const continuar = () => {
+    setErro(null);
+    const regras = [
+      ...regrasArtigo523(acessorios),
+      {
+        nome: "honorarios_contratuais",
+        // Opcional: em branco significa "sem honorários contratuais".
+        valido:
+          !honorariosContratuais?.percentual ||
+          (!Number.isNaN(Number(honorariosContratuais.percentual)) &&
+            Number(honorariosContratuais.percentual) > 0),
+        mensagem: "Informe um percentual em fração (ex.: 0.10 = 10%) ou deixe em branco.",
+      },
+      ...regrasAcessorios(
+        acessorios.filter((a) => TIPOS_EM_SECAO.includes(a.tipo)),
+        processo
+      ),
+    ];
+    if (!validacao.validar(regras)) return;
+    irParaPasso(4);
+  };
+
   return (
     <div className="rota-acessorios">
       <h2>Liquidação de Sentença — Cálculo Judicial (Passo 3)</h2>
@@ -79,6 +109,7 @@ export function AcessoriosRoute() {
         acessorios={acessoriosDoTipo("honorarios_sucumbencia")}
         subtiposPermitidos={["condenacao", "valor_monetario"]}
         onMudou={recarregar}
+        validacao={validacao}
       />
 
       <Artigo523Secao
@@ -86,18 +117,18 @@ export function AcessoriosRoute() {
         acessorios={acessorios}
         dataEventoPadrao={processo.data_evento_padrao ?? ""}
         onMudou={recarregar}
+        validacao={validacao}
       />
 
       <section className="secao-formulario">
         <h3>Honorários Contratuais</h3>
-        <label>
-          Percentual
+        <Campo nome="honorarios_contratuais" validacao={validacao} rotulo="Percentual">
           <input
             placeholder="% (ex.: 0.10 = 10%)"
             defaultValue={honorariosContratuais?.percentual ?? ""}
             onBlur={(e) => salvarHonorariosContratuais(e.target.value)}
           />
-        </label>
+        </Campo>
       </section>
 
       <AcessorioSecao
@@ -108,6 +139,7 @@ export function AcessoriosRoute() {
         acessorios={acessoriosDoTipo("honorarios_execucao")}
         subtiposPermitidos={["condenacao", "valor_monetario", "causa"]}
         onMudou={recarregar}
+        validacao={validacao}
       />
 
       <AcessorioSecao
@@ -126,6 +158,7 @@ export function AcessoriosRoute() {
           "causa",
         ]}
         onMudou={recarregar}
+        validacao={validacao}
       />
 
       <AcessorioSecao
@@ -136,6 +169,7 @@ export function AcessoriosRoute() {
         acessorios={acessoriosDoTipo("custas_processuais")}
         subtiposPermitidos={["valor_monetario", "condenacao", "causa"]}
         onMudou={recarregar}
+        validacao={validacao}
       />
 
       <section className="secao-formulario">
@@ -175,7 +209,7 @@ export function AcessoriosRoute() {
         <button type="button" onClick={() => irParaPasso(2)}>
           ← voltar
         </button>
-        <button type="button" className="primario" onClick={() => irParaPasso(4)}>
+        <button type="button" className="primario" onClick={continuar}>
           Continuar →
         </button>
       </div>

@@ -6,6 +6,7 @@
 // especificacao-tecnica-motor-calculo-judicial.md.
 import type { CorrecaoSegmento, Indice, TipoVencimento } from "../../lib/types";
 import { INDICES, TIPOS_VENCIMENTO } from "../../lib/types";
+import { Campo, VALIDACAO_INERTE, obrigatorio, type RegraCampo, type Validacao } from "../../lib/validacao";
 
 interface Props {
   segmentos: CorrecaoSegmento[];
@@ -15,6 +16,39 @@ interface Props {
   // da C.M."; se a âncora escolhida não tiver data preenchida ainda, o
   // campo de data fica em branco pro usuário digitar.
   datasAncora?: Partial<Record<TipoVencimento, string | null | undefined>>;
+  // Validação por campo (ver lib/validacao.tsx). `prefixo` isola os nomes
+  // quando há vários editores na mesma tela (um por parcela, por exemplo).
+  validacao?: Validacao;
+  prefixo?: string;
+}
+
+/** Regras dos campos deste editor — fica aqui junto do JSX para os dois
+ * não saírem de sincronia. `revelar` abre a seção que contém o editor
+ * quando ele está recolhido (linha "editar" da planilha). */
+export function regrasCorrecao(
+  prefixo: string,
+  segmentos: CorrecaoSegmento[],
+  revelar?: () => void
+): RegraCampo[] {
+  const regras: RegraCampo[] = [];
+  segmentos.forEach((segmento, i) => {
+    regras.push(obrigatorio(`${prefixo}${i}.data_inicio`, segmento.data_inicio, "A data inicial", revelar));
+    // Campo condicional: só existe na tela quando o índice é "tribunal".
+    if (segmento.indice === "tribunal") {
+      regras.push(
+        obrigatorio(`${prefixo}${i}.tribunal_codigo`, segmento.tribunal_codigo, "O código do tribunal", revelar)
+      );
+    }
+    if (segmento.data_inicio && segmento.data_fim && segmento.data_fim < segmento.data_inicio) {
+      regras.push({
+        nome: `${prefixo}${i}.data_fim`,
+        valido: false,
+        mensagem: "A data final não pode ser anterior à inicial.",
+        revelar,
+      });
+    }
+  });
+  return regras;
 }
 
 function novoSegmento(ordem: number): CorrecaoSegmento {
@@ -30,7 +64,13 @@ function novoSegmento(ordem: number): CorrecaoSegmento {
   };
 }
 
-export function CorrecaoSegmentoEditor({ segmentos, onChange, datasAncora }: Props) {
+export function CorrecaoSegmentoEditor({
+  segmentos,
+  onChange,
+  datasAncora,
+  validacao = VALIDACAO_INERTE,
+  prefixo = "correcao.",
+}: Props) {
   const atualizar = (indice: number, campo: keyof CorrecaoSegmento, valor: unknown) => {
     const copia = segmentos.map((s, i) => (i === indice ? { ...s, [campo]: valor } : s));
     onChange(copia);
@@ -68,24 +108,30 @@ export function CorrecaoSegmentoEditor({ segmentos, onChange, datasAncora }: Pro
               ))}
             </select>
             {segmento.indice === "tribunal" && (
-              <input
-                placeholder="código do tribunal (ex.: TJGO)"
-                value={segmento.tribunal_codigo ?? ""}
-                onChange={(e) => atualizar(i, "tribunal_codigo", e.target.value)}
-              />
+              <Campo nome={`${prefixo}${i}.tribunal_codigo`} validacao={validacao} como="div">
+                <input
+                  placeholder="código do tribunal (ex.: TJGO)"
+                  value={segmento.tribunal_codigo ?? ""}
+                  onChange={(e) => atualizar(i, "tribunal_codigo", e.target.value)}
+                />
+              </Campo>
             )}
-            <input
-              type="date"
-              value={segmento.data_inicio}
-              onChange={(e) => atualizar(i, "data_inicio", e.target.value)}
-            />
+            <Campo nome={`${prefixo}${i}.data_inicio`} validacao={validacao} como="div">
+              <input
+                type="date"
+                value={segmento.data_inicio}
+                onChange={(e) => atualizar(i, "data_inicio", e.target.value)}
+              />
+            </Campo>
             <span>até</span>
-            <input
-              type="date"
-              value={segmento.data_fim ?? ""}
-              placeholder="data do cálculo"
-              onChange={(e) => atualizar(i, "data_fim", e.target.value || null)}
-            />
+            <Campo nome={`${prefixo}${i}.data_fim`} validacao={validacao} como="div">
+              <input
+                type="date"
+                value={segmento.data_fim ?? ""}
+                placeholder="data do cálculo"
+                onChange={(e) => atualizar(i, "data_fim", e.target.value || null)}
+              />
+            </Campo>
             <input
               placeholder="fonte do critério (ex.: sentença, fls. 312)"
               value={segmento.fonte_criterio ?? ""}

@@ -6,15 +6,22 @@
 // corrigido é subtraído do total geral, não do saldo de uma parcela
 // específica.
 import { Fragment, useEffect, useRef, useState } from "react";
-import { CorrecaoSegmentoEditor } from "../../components/forms/CorrecaoSegmentoEditor";
-import { JurosSegmentoEditor } from "../../components/forms/JurosSegmentoEditor";
+import { CorrecaoSegmentoEditor, regrasCorrecao } from "../../components/forms/CorrecaoSegmentoEditor";
+import { JurosSegmentoEditor, regrasJuros } from "../../components/forms/JurosSegmentoEditor";
 import { api, mensagemDeErro } from "../../lib/api";
 import { rotularCorrecaoDefault, rotularJurosDefault } from "../../lib/rotulos";
 import type { Deducao, Processo, TipoAtualizacaoDeducao, TipoDeducao, TipoVencimento } from "../../lib/types";
 import { TIPOS_ATUALIZACAO_DEDUCAO, TIPOS_DEDUCAO } from "../../lib/types";
+import { Campo, obrigatorio, useValidacao, type RegraCampo } from "../../lib/validacao";
 import { useWizard } from "../../store/wizardStore";
 
 type OpcaoDefault = "default" | "sem" | "personalizado";
+
+/** "Outra Data" e "Data do Levantamento" exigem a data ao lado; os
+ * outros tipos derivam a data de outro lugar e deixam o campo desligado. */
+function exigeDataAtualizacao(tipo: TipoAtualizacaoDeducao): boolean {
+  return tipo === "outra_data" || tipo === "data_levantamento";
+}
 
 function opcaoCorrecao(d: Deducao): OpcaoDefault {
   if (d.usa_correcao_default) return "default";
@@ -46,8 +53,10 @@ export function DeducoesRoute() {
   const itensRef = useRef<Deducao[]>([]);
   itensRef.current = itens;
   const [rascunho, setRascunho] = useState(rascunhoVazio());
+  // Só falha de servidor — campo faltando aparece no próprio campo.
   const [erro, setErro] = useState<string | null>(null);
   const [expandido, setExpandido] = useState<string | null>(null);
+  const validacao = useValidacao();
 
   const recarregar = () => {
     if (!processoId) return;
@@ -84,6 +93,16 @@ export function DeducoesRoute() {
     const atualizado = { ...atual, ...patch };
     itensRef.current = itensRef.current.map((it) => (it.id === id ? atualizado : it));
     setItens(itensRef.current);
+    // Escolher "Outra Data"/"Data do Levantamento" faz aparecer a data ao
+    // lado — que o backend exige. Em vez de deixar o salvamento
+    // automático estourar um 422 com mensagem crua, mantém a mudança só
+    // na tela e pede a data no próprio campo (que ganha o foco).
+    if (exigeDataAtualizacao(atualizado.atualizacao_tipo) && !atualizado.data_atualizacao) {
+      validacao.validar([
+        obrigatorio(`deducao.${id}.data_atualizacao`, null, "A data de atualização"),
+      ]);
+      return;
+    }
     try {
       await api.deducoes.atualizar(id, atualizado);
     } catch (e) {
@@ -138,13 +157,17 @@ export function DeducoesRoute() {
 
   const adicionar = async () => {
     setErro(null);
-    const faltando: string[] = [];
-    if (!rascunho.data_inicial) faltando.push("Data Inicial");
-    if (!rascunho.valor) faltando.push("Valor");
-    if (faltando.length > 0) {
-      setErro(`Preencha antes de adicionar a linha: ${faltando.join(", ")}.`);
-      return;
-    }
+    const regras: RegraCampo[] = [
+      obrigatorio("rascunho.data_inicial", rascunho.data_inicial, "A data inicial"),
+      {
+        nome: "rascunho.valor",
+        valido: Boolean(rascunho.valor && !Number.isNaN(Number(rascunho.valor)) && Number(rascunho.valor) > 0),
+        mensagem: rascunho.valor
+          ? "Informe um valor numérico maior que zero (ex.: 1500.00)."
+          : "O valor é obrigatório.",
+      },
+    ];
+    if (!validacao.validar(regras)) return;
     try {
       await api.deducoes.criar(processoId, rascunho);
       setRascunho(rascunhoVazio());
@@ -152,6 +175,41 @@ export function DeducoesRoute() {
     } catch (e) {
       setErro(mensagemDeErro(e));
     }
+  };
+
+  const continuar = () => {
+    setErro(null);
+    const regras: RegraCampo[] = [];
+    for (const d of itens) {
+      const abrirLinha = () => setExpandido(d.id);
+      regras.push(obrigatorio(`deducao.${d.id}.data_inicial`, d.data_inicial, "A data inicial"));
+      regras.push({
+        nome: `deducao.${d.id}.valor`,
+        valido: Boolean(d.valor && !Number.isNaN(Number(d.valor)) && Number(d.valor) > 0),
+        mensagem: d.valor ? "Informe um valor numérico maior que zero." : "O valor é obrigatório.",
+      });
+      // Campo condicional: a data ao lado só é exigida (e só fica
+      // habilitada) quando a Atualização é "Outra Data"/"Data do
+      // Levantamento" — antes disso passava em branco e o cálculo saía
+      // com a data errada sem avisar ninguém.
+      if (exigeDataAtualizacao(d.atualizacao_tipo)) {
+        regras.push(
+          obrigatorio(
+            `deducao.${d.id}.data_atualizacao`,
+            d.data_atualizacao,
+            "A data de atualização"
+          )
+        );
+      }
+      if (!d.usa_correcao_default && d.correcao_segmentos_override.length > 0) {
+        regras.push(...regrasCorrecao(`deducao.${d.id}.correcao.`, d.correcao_segmentos_override, abrirLinha));
+      }
+      if (!d.usa_juros_default && d.juros_segmentos_override.length > 0) {
+        regras.push(...regrasJuros(`deducao.${d.id}.juros.`, d.juros_segmentos_override, abrirLinha));
+      }
+    }
+    if (!validacao.validar(regras)) return;
+    irParaPasso(5);
   };
 
   const remover = async (id: string) => {
@@ -186,7 +244,7 @@ export function DeducoesRoute() {
           </thead>
           <tbody>
             {itens.map((d, i) => {
-              const precisaDataAtualizacao = d.atualizacao_tipo === "outra_data" || d.atualizacao_tipo === "data_levantamento";
+              const precisaDataAtualizacao = exigeDataAtualizacao(d.atualizacao_tipo);
               return (
                 <Fragment key={d.id}>
                   <tr>
@@ -201,11 +259,13 @@ export function DeducoesRoute() {
                       </select>
                     </td>
                     <td>
-                      <input
-                        type="date"
-                        value={d.data_inicial}
-                        onChange={(e) => salvar(d.id, { data_inicial: e.target.value })}
-                      />
+                      <Campo nome={`deducao.${d.id}.data_inicial`} validacao={validacao} como="div">
+                        <input
+                          type="date"
+                          value={d.data_inicial}
+                          onChange={(e) => salvar(d.id, { data_inicial: e.target.value })}
+                        />
+                      </Campo>
                     </td>
                     <td>
                       <input
@@ -214,7 +274,9 @@ export function DeducoesRoute() {
                       />
                     </td>
                     <td>
-                      <input placeholder="0,00" defaultValue={d.valor} onBlur={(e) => salvar(d.id, { valor: e.target.value })} />
+                      <Campo nome={`deducao.${d.id}.valor`} validacao={validacao} como="div">
+                        <input placeholder="0,00" defaultValue={d.valor} onBlur={(e) => salvar(d.id, { valor: e.target.value })} />
+                      </Campo>
                     </td>
                     <td>
                       <select
@@ -229,12 +291,14 @@ export function DeducoesRoute() {
                       </select>
                     </td>
                     <td>
-                      <input
-                        type="date"
-                        disabled={!precisaDataAtualizacao}
-                        value={d.data_atualizacao ?? ""}
-                        onChange={(e) => salvar(d.id, { data_atualizacao: e.target.value || null })}
-                      />
+                      <Campo nome={`deducao.${d.id}.data_atualizacao`} validacao={validacao} como="div">
+                        <input
+                          type="date"
+                          disabled={!precisaDataAtualizacao}
+                          value={d.data_atualizacao ?? ""}
+                          onChange={(e) => salvar(d.id, { data_atualizacao: e.target.value || null })}
+                        />
+                      </Campo>
                     </td>
                     <td>
                       <select value={opcaoCorrecao(d)} onChange={(e) => trocarOpcaoCorrecao(d, e.target.value as OpcaoDefault)}>
@@ -268,6 +332,8 @@ export function DeducoesRoute() {
                               segmentos={d.correcao_segmentos_override}
                               onChange={(segmentos) => salvar(d.id, { correcao_segmentos_override: segmentos })}
                               datasAncora={datasAncora}
+                              validacao={validacao}
+                              prefixo={`deducao.${d.id}.correcao.`}
                             />
                           )}
                           {opcaoJuros(d) === "personalizado" && (
@@ -275,6 +341,8 @@ export function DeducoesRoute() {
                               segmentos={d.juros_segmentos_override}
                               onChange={(segmentos) => salvar(d.id, { juros_segmentos_override: segmentos })}
                               datasAncora={datasAncora}
+                              validacao={validacao}
+                              prefixo={`deducao.${d.id}.juros.`}
                             />
                           )}
                         </div>
@@ -296,13 +364,17 @@ export function DeducoesRoute() {
                 </select>
               </td>
               <td>
-                <input type="date" value={rascunho.data_inicial} onChange={(e) => setRascunho({ ...rascunho, data_inicial: e.target.value })} />
+                <Campo nome="rascunho.data_inicial" validacao={validacao} como="div">
+                  <input type="date" value={rascunho.data_inicial} onChange={(e) => setRascunho({ ...rascunho, data_inicial: e.target.value })} />
+                </Campo>
               </td>
               <td>
                 <input value={rascunho.historico ?? ""} onChange={(e) => setRascunho({ ...rascunho, historico: e.target.value })} />
               </td>
               <td>
-                <input placeholder="0,00" value={rascunho.valor} onChange={(e) => setRascunho({ ...rascunho, valor: e.target.value })} />
+                <Campo nome="rascunho.valor" validacao={validacao} como="div">
+                  <input placeholder="0,00" value={rascunho.valor} onChange={(e) => setRascunho({ ...rascunho, valor: e.target.value })} />
+                </Campo>
               </td>
               <td colSpan={4} />
               <td>
@@ -319,7 +391,7 @@ export function DeducoesRoute() {
         <button type="button" onClick={() => irParaPasso(3)}>
           ← voltar
         </button>
-        <button type="button" className="primario" onClick={() => irParaPasso(5)}>
+        <button type="button" className="primario" onClick={continuar}>
           Continuar →
         </button>
       </div>

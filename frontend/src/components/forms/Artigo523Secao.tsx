@@ -6,8 +6,22 @@
 import { useState } from "react";
 import { api, mensagemDeErro } from "../../lib/api";
 import type { Acessorio, TipoAcessorio } from "../../lib/types";
+import { Campo, VALIDACAO_INERTE, obrigatorio, type RegraCampo, type Validacao } from "../../lib/validacao";
 
 const OPCOES = ["Não", "10%", "15%", "20%"] as const;
+
+/** A "Data do evento" só existe na tela quando a opção não é "Não" — mas
+ * quando existe é obrigatória (a base "saldo remanescente em data do
+ * evento" não tem como ser calculada sem ela). */
+export function regrasArtigo523(acessorios: Acessorio[]): RegraCampo[] {
+  const regras: RegraCampo[] = [];
+  for (const tipo of ["multa_523_cpc", "honorarios_523_cpc"] as const) {
+    const acessorio = acessorios.find((a) => a.tipo === tipo);
+    if (!acessorio) continue;
+    regras.push(obrigatorio(`art523.${tipo}.data_evento`, acessorio.data_evento, "A data do evento"));
+  }
+  return regras;
+}
 
 function percentualDaOpcao(opcao: string): string | null {
   if (opcao === "Não") return null;
@@ -26,9 +40,18 @@ interface CampoProps {
   acessorio: Acessorio | undefined;
   dataEventoPadrao: string;
   onMudou: () => void;
+  validacao: Validacao;
 }
 
-function CampoArtigo523({ titulo, tipo, processoId, acessorio, dataEventoPadrao, onMudou }: CampoProps) {
+function CampoArtigo523({
+  titulo,
+  tipo,
+  processoId,
+  acessorio,
+  dataEventoPadrao,
+  onMudou,
+  validacao,
+}: CampoProps) {
   const [erro, setErro] = useState<string | null>(null);
 
   const trocar = async (opcao: string) => {
@@ -73,8 +96,11 @@ function CampoArtigo523({ titulo, tipo, processoId, acessorio, dataEventoPadrao,
           </option>
         ))}
       </select>
+      {/* A data só entra na tela quando a opção deixa de ser "Não". */}
       {acessorio && (
-        <input type="date" value={acessorio.data_evento ?? ""} onChange={(e) => trocarData(e.target.value)} />
+        <Campo nome={`art523.${tipo}.data_evento`} validacao={validacao} como="div">
+          <input type="date" value={acessorio.data_evento ?? ""} onChange={(e) => trocarData(e.target.value)} />
+        </Campo>
       )}
       {erro && <span className="erro">{erro}</span>}
     </label>
@@ -86,9 +112,16 @@ interface Props {
   acessorios: Acessorio[];
   dataEventoPadrao: string;
   onMudou: () => void;
+  validacao?: Validacao;
 }
 
-export function Artigo523Secao({ processoId, acessorios, dataEventoPadrao, onMudou }: Props) {
+export function Artigo523Secao({
+  processoId,
+  acessorios,
+  dataEventoPadrao,
+  onMudou,
+  validacao = VALIDACAO_INERTE,
+}: Props) {
   const multa = acessorios.find((a) => a.tipo === "multa_523_cpc");
   const honorarios = acessorios.find((a) => a.tipo === "honorarios_523_cpc");
 
@@ -103,6 +136,7 @@ export function Artigo523Secao({ processoId, acessorios, dataEventoPadrao, onMud
           acessorio={multa}
           dataEventoPadrao={dataEventoPadrao}
           onMudou={onMudou}
+          validacao={validacao}
         />
         <CampoArtigo523
           titulo="Honorários art. 523"
@@ -111,6 +145,7 @@ export function Artigo523Secao({ processoId, acessorios, dataEventoPadrao, onMud
           acessorio={honorarios}
           dataEventoPadrao={dataEventoPadrao}
           onMudou={onMudou}
+          validacao={validacao}
         />
       </div>
     </section>
