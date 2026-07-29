@@ -7,6 +7,7 @@ import { useState } from "react";
 import { api, mensagemDeErro } from "../../lib/api";
 import type { Acessorio, TipoAcessorio } from "../../lib/types";
 import { Campo, VALIDACAO_INERTE, obrigatorio, type RegraCampo, type Validacao } from "../../lib/validacao";
+import { Icone } from "../ui/Icone";
 
 const OPCOES = ["Não", "10%", "15%", "20%"] as const;
 
@@ -127,7 +128,10 @@ export function Artigo523Secao({
 
   return (
     <section className="secao-formulario">
-      <h3>Artigo 523</h3>
+      <h3>
+        <Icone nome="alerta" tamanho={16} />
+        Artigo 523
+      </h3>
       <div className="grade-formulario">
         <CampoArtigo523
           titulo="Multa art. 523"

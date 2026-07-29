@@ -4,8 +4,9 @@
 // exibição, ver nota em lib/format.ts).
 import Decimal from "decimal.js";
 import { useEffect, useState } from "react";
+import { Icone } from "../../components/ui/Icone";
 import { api, mensagemDeErro } from "../../lib/api";
-import { formatarMoeda } from "../../lib/format";
+import { formatarData, formatarMoeda } from "../../lib/format";
 import type { Acessorio, CalculoPreview, Parcela, Processo, TipoAcessorio } from "../../lib/types";
 import { useWizard } from "../../store/wizardStore";
 
@@ -111,24 +112,47 @@ export function RevisaoRoute() {
 
   return (
     <div className="rota-revisao">
-      <h2>Revisão final</h2>
+      <h2>
+        <Icone nome="prancheta" tamanho={20} />
+        Revisão final
+      </h2>
+      <p className="texto-auxiliar">
+        Confira a totalização por natureza antes de emitir o documento.
+      </p>
+
       <div className="resumo-processo">
-        <p>
-          <strong>{processo.requerente}</strong> × <strong>{processo.requerido}</strong>
+        <p className="resumo-partes">
+          {processo.requerente} <span className="separador">×</span> {processo.requerido}
         </p>
         <p>
-          {processo.numero_processo} — {processo.comarca}/{processo.vara}
+          {[processo.numero_processo, [processo.comarca, processo.vara].filter(Boolean).join(" / ")]
+            .filter(Boolean)
+            .join(" — ") || "Sem número de processo informado"}
         </p>
-        <p>Data do cálculo: {processo.data_calculo}</p>
+        <p>Data do cálculo: {formatarData(processo.data_calculo)}</p>
       </div>
 
       <button type="button" onClick={calcular} disabled={calculando} className="primario">
-        {calculando ? "calculando…" : "Calcular"}
+        <Icone nome="calculadora" />
+        {calculando ? "Calculando…" : "Calcular"}
       </button>
-      {erro && <p className="erro">{erro}</p>}
+      {erro && (
+        <p className="erro">
+          <Icone nome="alerta" />
+          {erro}
+        </p>
+      )}
 
       {preview && (
         <>
+          <div className="painel-total">
+            <span className="painel-total-rotulo">
+              <Icone nome="balanca" tamanho={17} />
+              Total geral apurado
+            </span>
+            <span className="painel-total-valor">{formatarMoeda(preview.total_geral)}</span>
+          </div>
+
           <h3>Totalização por natureza</h3>
           <table className="tabela-totalizacao">
             <tbody>
@@ -169,13 +193,23 @@ export function RevisaoRoute() {
         </>
       )}
 
-      <p className="texto-auxiliar">
-        Gerar o PDF cria uma nova execução de cálculo persistida — a memória fica gravada
-        permanentemente para essa emissão, mesmo que os índices mudem depois.
-      </p>
-      <button type="button" onClick={emitirPdf} disabled={emitindo}>
-        {emitindo ? "gerando…" : "Gerar PDF"}
-      </button>
+      <div className="secao-formulario">
+        <h3>
+          <Icone nome="documento" tamanho={17} />
+          Emissão
+        </h3>
+        <p className="texto-auxiliar">
+          Gerar o PDF cria uma nova execução de cálculo persistida — a memória fica gravada
+          permanentemente para essa emissão, mesmo que os índices mudem depois.
+        </p>
+        <div className="acoes-rodape">
+          <span />
+          <button type="button" className="sucesso" onClick={emitirPdf} disabled={emitindo}>
+            <Icone nome="documento" />
+            {emitindo ? "Gerando…" : "Gerar PDF"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

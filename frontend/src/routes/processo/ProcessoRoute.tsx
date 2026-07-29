@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { CorrecaoSegmentoEditor, regrasCorrecao } from "../../components/forms/CorrecaoSegmentoEditor";
 import { JurosSegmentoEditor, regrasJuros } from "../../components/forms/JurosSegmentoEditor";
 import { EditorRico } from "../../components/ui/EditorRico";
+import { Icone } from "../../components/ui/Icone";
 import { api, mensagemDeErro } from "../../lib/api";
 import { PRESETS_CORRECAO, PRESETS_JUROS } from "../../lib/presets";
 import type { CorrecaoSegmento, JurosSegmento, Processo, TipoVencimento } from "../../lib/types";
@@ -157,15 +158,26 @@ export function ProcessoRoute() {
 
   return (
     <div className="rota-processo">
-      <h2>Liquidação de Sentença — Cálculo Judicial (Passo 1)</h2>
+      <h2>
+        <Icone nome="pasta" tamanho={20} />
+        Processo
+      </h2>
       <p className="texto-auxiliar">
         Informe o cadastro básico e as configurações de correção monetária e de juros para a
         liquidação de sentença.
       </p>
-      {erro && <p className="erro">{erro}</p>}
+      {erro && (
+        <p className="erro">
+          <Icone nome="alerta" />
+          {erro}
+        </p>
+      )}
 
       <section className="secao-formulario">
-        <h3>Cadastro</h3>
+        <h3>
+          <Icone nome="lista" tamanho={16} />
+          Cadastro
+        </h3>
         <div className="grade-formulario">
           <Campo nome="data_calculo" validacao={validacao} rotulo={<>Data Cálculo *</>}>
             <input type="date" value={form.data_calculo} onChange={(e) => campo("data_calculo", e.target.value)} />
@@ -235,7 +247,10 @@ export function ProcessoRoute() {
       </section>
 
       <section className="secao-formulario">
-        <h3>Configurações de Correção Monetária</h3>
+        <h3>
+          <Icone nome="raio" tamanho={16} />
+          Configurações de Correção Monetária
+        </h3>
         <div className="preset-selector">
           <Campo nome="correcao_segmentos_default" validacao={validacao} rotulo={<>Tabela Correção *</>}>
             <select defaultValue="" onChange={(e) => e.target.value && escolherPresetCorrecao(e.target.value)}>
@@ -277,7 +292,10 @@ export function ProcessoRoute() {
       </section>
 
       <section className="secao-formulario">
-        <h3>Configurações de Juros Moratórios</h3>
+        <h3>
+          <Icone nome="percentual" tamanho={16} />
+          Configurações de Juros Moratórios
+        </h3>
         <label>
           Contagem Juros
           <select value={form.contagem_juros} onChange={(e) => campo("contagem_juros", e.target.value as FormularioProcesso["contagem_juros"])}>
@@ -316,7 +334,10 @@ export function ProcessoRoute() {
       </section>
 
       <section className="secao-formulario">
-        <h3>Configurações</h3>
+        <h3>
+          <Icone nome="ajustes" tamanho={16} />
+          Configurações
+        </h3>
         <div className="grade-formulario">
           <label>
             Configurar Deduções
@@ -351,10 +372,12 @@ export function ProcessoRoute() {
 
       <div className="acoes-rodape">
         <button type="button" disabled={salvando} onClick={() => salvar(false)}>
+          <Icone nome="baixar" />
           Salvar rascunho
         </button>
         <button type="button" disabled={salvando} onClick={() => salvar(true)} className="primario">
-          Salvar e Avançar →
+          Salvar e avançar
+          <Icone nome="seta-direita" />
         </button>
       </div>
     </div>

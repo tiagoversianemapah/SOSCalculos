@@ -15,6 +15,7 @@ import {
   type RegraCampo,
   type Validacao,
 } from "../../lib/validacao";
+import { Icone } from "../ui/Icone";
 import { CorrecaoSegmentoEditor, regrasCorrecao } from "./CorrecaoSegmentoEditor";
 import { JurosSegmentoEditor, regrasJuros } from "./JurosSegmentoEditor";
 
@@ -366,7 +367,10 @@ export function AcessorioSecao({
 
   return (
     <section className="secao-formulario secao-acessorio">
-      <h3>{titulo}</h3>
+      <h3>
+        <Icone nome="lista" tamanho={16} />
+        {titulo}
+      </h3>
       {erro && <p className="erro">{erro}</p>}
       {itens.map((a) => {
         const subtipo = subtipoDoAcessorio(a);
@@ -515,11 +519,22 @@ export function AcessorioSecao({
                   </Campo>
                 </>
               )}
-              <button type="button" onClick={() => setExpandido(expandido === a.id ? null : a.id)}>
+              <button
+                type="button"
+                className="pequeno"
+                onClick={() => setExpandido(expandido === a.id ? null : a.id)}
+              >
+                <Icone nome={expandido === a.id ? "fechar" : "editar"} tamanho={13} />
                 {expandido === a.id ? "fechar" : "editar"}
               </button>
-              <button type="button" onClick={() => remover(a.id)} aria-label="Remover">
-                ✕
+              <button
+                type="button"
+                className="icone-so"
+                onClick={() => remover(a.id)}
+                aria-label="Remover"
+                title="Remover"
+              >
+                <Icone nome="lixeira" tamanho={14} />
               </button>
             </div>
             {temCorrecaoPropria && (
@@ -574,8 +589,9 @@ export function AcessorioSecao({
           </div>
         );
       })}
-      <button type="button" onClick={adicionar}>
-        + Add {titulo}
+      <button type="button" className="adicionar" onClick={adicionar}>
+        <Icone nome="mais" tamanho={14} />
+        Adicionar {titulo.toLowerCase()}
       </button>
     </section>
   );

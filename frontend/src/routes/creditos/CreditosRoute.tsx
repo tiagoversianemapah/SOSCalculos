@@ -12,6 +12,7 @@ import { JurosSegmentoEditor, regrasJuros } from "../../components/forms/JurosSe
 import { PreenchimentoSerieModal } from "../../components/forms/PreenchimentoSerieModal";
 import { SalarioMinimoModal } from "../../components/forms/SalarioMinimoModal";
 import { PagamentoTable } from "../../components/tables/PagamentoTable";
+import { Icone } from "../../components/ui/Icone";
 import { api, mensagemDeErro } from "../../lib/api";
 import { formatarMoeda } from "../../lib/format";
 import { rotularCorrecaoDefault, rotularJurosDefault } from "../../lib/rotulos";
@@ -209,18 +210,29 @@ export function CreditosRoute() {
 
   return (
     <div className="rota-creditos">
-      <h2>Liquidação de Sentença — Cálculo Judicial (Passo 2)</h2>
+      <h2>
+        <Icone nome="dinheiro" tamanho={20} />
+        Créditos
+      </h2>
       <p className="texto-auxiliar">Neste passo, informe todos os "créditos" para a liquidação de sentença.</p>
-      {erro && <p className="erro">{erro}</p>}
+      {erro && (
+        <p className="erro">
+          <Icone nome="alerta" />
+          {erro}
+        </p>
+      )}
 
       <div className="barra-acoes-creditos">
         <button type="button" disabled={!processoId} onClick={() => setModalSerie(true)}>
+          <Icone nome="calendario" />
           Preenchimento Em Série
         </button>
         <button type="button" disabled={!processoId} onClick={() => setModalSalarioMinimo(true)}>
+          <Icone nome="dinheiro" />
           Salário Mínimo
         </button>
         <button type="button" disabled title="Ainda não disponível — importação a partir de PDF">
+          <Icone nome="subir" />
           Importar
         </button>
       </div>
@@ -303,12 +315,23 @@ export function CreditosRoute() {
                       onBlur={() => salvarParcela(parcela.id, { multa_percentual: parcelas.find((p) => p.id === parcela.id)?.multa_percentual ?? null })}
                     />
                   </td>
-                  <td>
-                    <button type="button" onClick={() => setExpandida(expandida === parcela.id ? null : parcela.id)}>
+                  <td className="celula-acoes">
+                    <button
+                      type="button"
+                      className="pequeno"
+                      onClick={() => setExpandida(expandida === parcela.id ? null : parcela.id)}
+                    >
+                      <Icone nome={expandida === parcela.id ? "fechar" : "editar"} tamanho={13} />
                       {expandida === parcela.id ? "fechar" : "editar"}
                     </button>
-                    <button type="button" onClick={() => remover(parcela.id)}>
-                      remover
+                    <button
+                      type="button"
+                      className="icone-so"
+                      onClick={() => remover(parcela.id)}
+                      aria-label="Remover parcela"
+                      title="Remover parcela"
+                    >
+                      <Icone nome="lixeira" tamanho={14} />
                     </button>
                   </td>
                 </tr>
@@ -326,7 +349,7 @@ export function CreditosRoute() {
                 )}
               </Fragment>
             ))}
-            <tr>
+            <tr className="linha-rascunho">
               <td>{parcelas.length + 1}</td>
               <td>
                 <Campo nome="rascunho.vencimento" validacao={validacao} como="div">
@@ -344,9 +367,10 @@ export function CreditosRoute() {
                 </Campo>
               </td>
               <td colSpan={5} />
-              <td>
-                <button type="button" onClick={adicionar}>
-                  + adicionar
+              <td className="celula-acoes">
+                <button type="button" className="primario pequeno" onClick={adicionar}>
+                  <Icone nome="mais" tamanho={13} />
+                  adicionar
                 </button>
               </td>
             </tr>
@@ -376,10 +400,12 @@ export function CreditosRoute() {
 
       <div className="acoes-rodape">
         <button type="button" onClick={() => irParaPasso(1)}>
-          ← voltar
+          <Icone nome="seta-esquerda" />
+          Voltar
         </button>
         <button type="button" className="primario" onClick={continuar}>
-          Continuar →
+          Continuar
+          <Icone nome="seta-direita" />
         </button>
       </div>
     </div>
@@ -419,7 +445,7 @@ function ParcelaDetalhe({
         />
       )}
 
-      <h4>Deduções (Valor Pago)</h4>
+      <h4>Deduções (valor pago)</h4>
       <PagamentoTable parcelaId={parcela.id} pagamentos={parcela.pagamentos} onMudou={onMudouPagamentos} />
     </div>
   );

@@ -8,6 +8,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { CorrecaoSegmentoEditor, regrasCorrecao } from "../../components/forms/CorrecaoSegmentoEditor";
 import { JurosSegmentoEditor, regrasJuros } from "../../components/forms/JurosSegmentoEditor";
+import { Icone } from "../../components/ui/Icone";
 import { api, mensagemDeErro } from "../../lib/api";
 import { rotularCorrecaoDefault, rotularJurosDefault } from "../../lib/rotulos";
 import type { Deducao, Processo, TipoAtualizacaoDeducao, TipoDeducao, TipoVencimento } from "../../lib/types";
@@ -219,12 +220,20 @@ export function DeducoesRoute() {
 
   return (
     <div className="rota-deducoes">
-      <h2>Liquidação de Sentença — Cálculo Judicial (Deduções)</h2>
+      <h2>
+        <Icone nome="menos-circulo" tamanho={20} />
+        Deduções
+      </h2>
       <p className="texto-auxiliar">
         Informe as deduções para a liquidação de sentença — cada uma pode ter correção monetária e
         juros próprios; o valor corrigido é subtraído do total geral.
       </p>
-      {erro && <p className="erro">{erro}</p>}
+      {erro && (
+        <p className="erro">
+          <Icone nome="alerta" />
+          {erro}
+        </p>
+      )}
 
       <div className="tabela-scroll">
         <table className="tabela-creditos">
@@ -314,12 +323,23 @@ export function DeducoesRoute() {
                         <option value="personalizado">Personalizado…</option>
                       </select>
                     </td>
-                    <td>
-                      <button type="button" onClick={() => setExpandido(expandido === d.id ? null : d.id)}>
+                    <td className="celula-acoes">
+                      <button
+                        type="button"
+                        className="pequeno"
+                        onClick={() => setExpandido(expandido === d.id ? null : d.id)}
+                      >
+                        <Icone nome={expandido === d.id ? "fechar" : "editar"} tamanho={13} />
                         {expandido === d.id ? "fechar" : "editar"}
                       </button>
-                      <button type="button" onClick={() => remover(d.id)}>
-                        remover
+                      <button
+                        type="button"
+                        className="icone-so"
+                        onClick={() => remover(d.id)}
+                        aria-label="Remover dedução"
+                        title="Remover dedução"
+                      >
+                        <Icone nome="lixeira" tamanho={14} />
                       </button>
                     </td>
                   </tr>
@@ -352,7 +372,7 @@ export function DeducoesRoute() {
                 </Fragment>
               );
             })}
-            <tr>
+            <tr className="linha-rascunho">
               <td>{itens.length + 1}</td>
               <td>
                 <select value={rascunho.tipo} onChange={(e) => setRascunho({ ...rascunho, tipo: e.target.value as TipoDeducao })}>
@@ -377,9 +397,10 @@ export function DeducoesRoute() {
                 </Campo>
               </td>
               <td colSpan={4} />
-              <td>
-                <button type="button" onClick={adicionar}>
-                  + adicionar
+              <td className="celula-acoes">
+                <button type="button" className="primario pequeno" onClick={adicionar}>
+                  <Icone nome="mais" tamanho={13} />
+                  adicionar
                 </button>
               </td>
             </tr>
@@ -389,10 +410,12 @@ export function DeducoesRoute() {
 
       <div className="acoes-rodape">
         <button type="button" onClick={() => irParaPasso(3)}>
-          ← voltar
+          <Icone nome="seta-esquerda" />
+          Voltar
         </button>
         <button type="button" className="primario" onClick={continuar}>
-          Continuar →
+          Continuar
+          <Icone nome="seta-direita" />
         </button>
       </div>
     </div>

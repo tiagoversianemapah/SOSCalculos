@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { api, mensagemDeErro } from "../../lib/api";
 import { formatarMoeda } from "../../lib/format";
 import type { SalarioMinimoValor } from "../../lib/types";
+import { Icone } from "../ui/Icone";
 import { Campo, obrigatorio, useValidacao, type RegraCampo } from "../../lib/validacao";
 
 interface Props {
@@ -154,9 +155,12 @@ export function SalarioMinimoModal({
     <div className="modal-fundo" role="dialog" aria-modal="true">
       <div className="modal-caixa">
         <div className="modal-cabecalho">
-          <h3>Salário Mínimo</h3>
-          <button type="button" onClick={onFechar} aria-label="Fechar">
-            ✕
+          <h3>
+            <Icone nome="dinheiro" tamanho={18} />
+            Salário Mínimo
+          </h3>
+          <button type="button" className="icone-so neutro" onClick={onFechar} aria-label="Fechar">
+            <Icone nome="fechar" tamanho={15} />
           </button>
         </div>
 
@@ -165,7 +169,12 @@ export function SalarioMinimoModal({
           Cada valor vale a partir da competência cadastrada até o próximo cadastro — só precisa
           lançar quando o salário mínimo muda, não todo mês.
         </p>
-        {erroCadastro && <p className="erro">{erroCadastro}</p>}
+        {erroCadastro && (
+          <p className="erro">
+            <Icone nome="alerta" />
+            {erroCadastro}
+          </p>
+        )}
         {valores.length > 0 && (
           <table>
             <thead>
@@ -181,8 +190,14 @@ export function SalarioMinimoModal({
                   <td>{v.competencia.slice(0, 7)}</td>
                   <td>{formatarMoeda(v.valor)}</td>
                   <td>
-                    <button type="button" onClick={() => removerValor(v.id)}>
-                      remover
+                    <button
+                      type="button"
+                      className="icone-so"
+                      onClick={() => removerValor(v.id)}
+                      aria-label="Remover valor"
+                      title="Remover valor"
+                    >
+                      <Icone nome="lixeira" tamanho={14} />
                     </button>
                   </td>
                 </tr>
@@ -198,14 +213,20 @@ export function SalarioMinimoModal({
             <input placeholder="0,00" value={novoValor} onChange={(e) => setNovoValor(e.target.value)} />
           </Campo>
         </div>
-        <button type="button" onClick={adicionarValor}>
-          + adicionar valor
+        <button type="button" className="adicionar" onClick={adicionarValor}>
+          <Icone nome="mais" tamanho={14} />
+          adicionar valor
         </button>
 
         <hr />
 
         <h4>Gerar linhas de crédito</h4>
-        {erro && <p className="erro">{erro}</p>}
+        {erro && (
+          <p className="erro">
+            <Icone nome="alerta" />
+            {erro}
+          </p>
+        )}
         <div className="grade-formulario">
           <Campo nome="data_inicial" validacao={validacaoGerador} rotulo={<>Data Inicial *</>}>
             <input type="date" value={dataInicial} onChange={(e) => setDataInicial(e.target.value)} />
@@ -264,7 +285,8 @@ export function SalarioMinimoModal({
         </Campo>
         <div className="modal-rodape">
           <button type="button" className="primario" disabled={gerando} onClick={gerar}>
-            {gerando ? "gerando…" : "Gerar"}
+            <Icone nome="raio" />
+            {gerando ? "Gerando…" : "Gerar"}
           </button>
           <button type="button" onClick={onFechar}>
             Fechar

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { AcessorioSecao, regrasAcessorios } from "../../components/forms/AcessorioSecao";
 import { Artigo523Secao, regrasArtigo523 } from "../../components/forms/Artigo523Secao";
 import { ParadaForm, type RascunhoParada } from "../../components/forms/ParadaForm";
+import { Icone } from "../../components/ui/Icone";
 import { api, mensagemDeErro } from "../../lib/api";
 import { formatarData } from "../../lib/format";
 import type { Acessorio, Parada, Processo } from "../../lib/types";
@@ -95,11 +96,19 @@ export function AcessoriosRoute() {
 
   return (
     <div className="rota-acessorios">
-      <h2>Liquidação de Sentença — Cálculo Judicial (Passo 3)</h2>
+      <h2>
+        <Icone nome="percentual" tamanho={20} />
+        Acessórios
+      </h2>
       <p className="texto-auxiliar">
         Neste passo, informe todos os acessórios necessários, como honorários, multas, custas, entre outros.
       </p>
-      {erro && <p className="erro">{erro}</p>}
+      {erro && (
+        <p className="erro">
+          <Icone nome="alerta" />
+          {erro}
+        </p>
+      )}
 
       <AcessorioSecao
         titulo="Honorários de Sucumbência"
@@ -121,7 +130,10 @@ export function AcessoriosRoute() {
       />
 
       <section className="secao-formulario">
-        <h3>Honorários Contratuais</h3>
+        <h3>
+          <Icone nome="percentual" tamanho={16} />
+          Honorários Contratuais
+        </h3>
         <Campo nome="honorarios_contratuais" validacao={validacao} rotulo="Percentual">
           <input
             placeholder="% (ex.: 0.10 = 10%)"
@@ -173,7 +185,10 @@ export function AcessoriosRoute() {
       />
 
       <section className="secao-formulario">
-        <h3>Paradas Extraordinárias</h3>
+        <h3>
+          <Icone nome="relogio" tamanho={16} />
+          Paradas Extraordinárias
+        </h3>
         <table>
           <thead>
             <tr>
@@ -193,9 +208,15 @@ export function AcessoriosRoute() {
                 <td>
                   {[p.suspende_correcao && "correção", p.suspende_juros && "juros"].filter(Boolean).join(" e ")}
                 </td>
-                <td>
-                  <button type="button" onClick={() => api.paradas.remover(p.id).then(recarregar)}>
-                    remover
+                <td className="celula-acoes">
+                  <button
+                    type="button"
+                    className="icone-so"
+                    aria-label="Remover parada"
+                    title="Remover parada"
+                    onClick={() => api.paradas.remover(p.id).then(recarregar)}
+                  >
+                    <Icone nome="lixeira" tamanho={14} />
                   </button>
                 </td>
               </tr>
@@ -207,10 +228,12 @@ export function AcessoriosRoute() {
 
       <div className="acoes-rodape">
         <button type="button" onClick={() => irParaPasso(2)}>
-          ← voltar
+          <Icone nome="seta-esquerda" />
+          Voltar
         </button>
         <button type="button" className="primario" onClick={continuar}>
-          Continuar →
+          Continuar
+          <Icone nome="seta-direita" />
         </button>
       </div>
     </div>

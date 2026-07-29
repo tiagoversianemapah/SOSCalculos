@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icone } from "./components/ui/Icone";
 import { WizardShell } from "./components/wizard/WizardShell";
 import { ListaProcessos } from "./routes/ListaProcessos";
 import { AcessoriosRoute } from "./routes/acessorios/AcessoriosRoute";
@@ -24,12 +25,32 @@ function WizardConteudo() {
   }
 }
 
+function CabecalhoApp() {
+  return (
+    <header className="app-cabecalho">
+      <div className="app-marca">
+        <Icone nome="balanca" tamanho={22} />
+        Cálculo Judicial
+        <span className="app-marca-sub">Liquidação de sentença</span>
+      </div>
+    </header>
+  );
+}
+
 function Conteudo({ onSair }: { onSair: () => void }) {
   const { definirProcessoId } = useWizard();
   return (
-    <div>
-      <button type="button" className="voltar-lista" onClick={() => { definirProcessoId(null); onSair(); }}>
-        ← lista de processos
+    <div className="app-corpo">
+      <button
+        type="button"
+        className="voltar-lista discreto"
+        onClick={() => {
+          definirProcessoId(null);
+          onSair();
+        }}
+      >
+        <Icone nome="seta-esquerda" />
+        Lista de processos
       </button>
       <WizardShell>
         <WizardConteudo />
@@ -42,24 +63,25 @@ export default function App() {
   const [tela, setTela] = useState<"lista" | "wizard">("lista");
   const [processoInicial, setProcessoInicial] = useState<string | null>(null);
 
-  if (tela === "lista") {
-    return (
-      <ListaProcessos
-        onNovo={() => {
-          setProcessoInicial(null);
-          setTela("wizard");
-        }}
-        onAbrir={(id) => {
-          setProcessoInicial(id);
-          setTela("wizard");
-        }}
-      />
-    );
-  }
-
   return (
-    <WizardProvider key={processoInicial ?? "novo"} processoInicial={processoInicial}>
-      <Conteudo onSair={() => setTela("lista")} />
-    </WizardProvider>
+    <>
+      <CabecalhoApp />
+      {tela === "lista" ? (
+        <ListaProcessos
+          onNovo={() => {
+            setProcessoInicial(null);
+            setTela("wizard");
+          }}
+          onAbrir={(id) => {
+            setProcessoInicial(id);
+            setTela("wizard");
+          }}
+        />
+      ) : (
+        <WizardProvider key={processoInicial ?? "novo"} processoInicial={processoInicial}>
+          <Conteudo onSair={() => setTela("lista")} />
+        </WizardProvider>
+      )}
+    </>
   );
 }

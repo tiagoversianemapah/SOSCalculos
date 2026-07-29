@@ -2,6 +2,7 @@
 // perda de disco; fica visível na tela inicial, não escondido em menu.
 import { useRef, useState } from "react";
 import { api } from "../../lib/api";
+import { Icone } from "./Icone";
 
 export function BackupPainel({ onRestaurado }: { onRestaurado: () => void }) {
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -52,9 +53,11 @@ export function BackupPainel({ onRestaurado }: { onRestaurado: () => void }) {
   return (
     <div className="backup-painel">
       <button type="button" onClick={exportar} disabled={processando}>
+        <Icone nome="baixar" />
         Exportar backup
       </button>
       <button type="button" onClick={() => inputArquivo.current?.click()} disabled={processando}>
+        <Icone nome="subir" />
         Restaurar backup
       </button>
       <input

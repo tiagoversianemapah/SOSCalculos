@@ -5,6 +5,7 @@
 // vencimento em vez do dia de Data Inicial repetido.
 import { useState } from "react";
 import { api, mensagemDeErro } from "../../lib/api";
+import { Icone } from "../ui/Icone";
 import { Campo, obrigatorio, useValidacao, type RegraCampo } from "../../lib/validacao";
 
 interface Props {
@@ -124,12 +125,20 @@ export function PreenchimentoSerieModal({
     <div className="modal-fundo" role="dialog" aria-modal="true">
       <div className="modal-caixa">
         <div className="modal-cabecalho">
-          <h3>Preenchimento Em Série</h3>
-          <button type="button" onClick={onFechar} aria-label="Fechar">
-            ✕
+          <h3>
+            <Icone nome="calendario" tamanho={18} />
+            Preenchimento Em Série
+          </h3>
+          <button type="button" className="icone-so neutro" onClick={onFechar} aria-label="Fechar">
+            <Icone nome="fechar" tamanho={15} />
           </button>
         </div>
-        {erro && <p className="erro">{erro}</p>}
+        {erro && (
+          <p className="erro">
+            <Icone nome="alerta" />
+            {erro}
+          </p>
+        )}
         <div className="grade-formulario">
           <Campo nome="data_inicial" validacao={validacao} rotulo={<>Data Inicial *</>}>
             <input type="date" value={dataInicial} onChange={(e) => setDataInicial(e.target.value)} />
@@ -188,7 +197,8 @@ export function PreenchimentoSerieModal({
         </Campo>
         <div className="modal-rodape">
           <button type="button" className="primario" disabled={gerando} onClick={gerar}>
-            {gerando ? "gerando…" : "Gerar"}
+            <Icone nome="raio" />
+            {gerando ? "Gerando…" : "Gerar"}
           </button>
           <button type="button" onClick={onFechar}>
             Fechar

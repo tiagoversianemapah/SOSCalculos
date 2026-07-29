@@ -4,6 +4,7 @@
 // "Compor com Selic" replicam a linha de configuração do SOSCálculos
 // (paridade, seção 0/2) — ver CorrecaoSegmentoEditor no
 // especificacao-tecnica-motor-calculo-judicial.md.
+import { Icone } from "../ui/Icone";
 import type { CorrecaoSegmento, Indice, TipoVencimento } from "../../lib/types";
 import { INDICES, TIPOS_VENCIMENTO } from "../../lib/types";
 import { Campo, VALIDACAO_INERTE, obrigatorio, type RegraCampo, type Validacao } from "../../lib/validacao";
@@ -137,8 +138,14 @@ export function CorrecaoSegmentoEditor({
               value={segmento.fonte_criterio ?? ""}
               onChange={(e) => atualizar(i, "fonte_criterio", e.target.value)}
             />
-            <button type="button" onClick={() => remover(i)} aria-label="Remover segmento">
-              ✕
+            <button
+              type="button"
+              className="icone-so"
+              onClick={() => remover(i)}
+              aria-label="Remover segmento"
+              title="Remover segmento"
+            >
+              <Icone nome="lixeira" tamanho={14} />
             </button>
           </div>
           <div className="segmento-linha segmento-linha-config">
@@ -178,8 +185,9 @@ export function CorrecaoSegmentoEditor({
           </div>
         </div>
       ))}
-      <button type="button" onClick={adicionar}>
-        + adicionar tabela de correção
+      <button type="button" className="adicionar" onClick={adicionar}>
+        <Icone nome="mais" tamanho={14} />
+        adicionar tabela de correção
       </button>
     </div>
   );
