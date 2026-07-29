@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Backend — artefatos de build/empacotamento (gerados por npm/pyinstaller)
+backend/build/
+backend/dist/
+
+# Frontend — build gerado (npm run build recria)
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# Editor / SO
+.vscode/
+.DS_Store
+Thumbs.db
